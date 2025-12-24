@@ -1,0 +1,32 @@
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+env/
+venv/
+driver_env/
+.Python
+
+# VS Code settings
+.vscode/
+
+# Mac OS files
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Large models (handled by Git LFS)
+*.h5
+*.pt
+driver_env/ 
+env/ 
+venv/ 
+__pycache__/ 
+*.pyc 
+*.pyo 
+*.pyd 
+.Python 
