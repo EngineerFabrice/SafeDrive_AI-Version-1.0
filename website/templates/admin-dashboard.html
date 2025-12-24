@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --primary: #4f46e5;
+    --secondary: #6366f1;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --bg-light: #f3f4f6;
+    --bg-dark: #111827;
+    --text-dark: #1f2937;
+    --text-light: #6b7280;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+body { display: flex; min-height: 100vh; background: var(--bg-light); color: var(--text-dark); }
+
+/* Sidebar */
+.sidebar {
+    width: 260px;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+.sidebar h2 { margin-bottom: 30px; font-size: 22px; color: var(--primary); }
+.sidebar a {
+    display: flex; align-items: center;
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    text-decoration: none;
+    color: var(--text-dark);
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+.sidebar a:hover { background: var(--bg-light); }
+.sidebar a.active { background: var(--primary); color: #fff; }
+
+/* Main content */
+.main { flex: 1; padding: 20px 30px; overflow-y: auto; }
+
+/* Top bar */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.topbar input { padding: 10px 15px; border-radius: 10px; border: 1px solid #d1d5db; width: 250px; }
+.topbar .user { display: flex; align-items: center; gap: 10px; }
+.topbar .user img { width: 40px; height: 40px; border-radius: 50%; }
+
+/* Cards */
+.cards { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; }
+.card {
+    flex: 1 1 200px;
+    background: #fff;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+.card:hover { transform: translateY(-3px); }
+.card h3 { font-size: 16px; color: var(--text-light); margin-bottom: 10px; }
+.card p { font-size: 22px; font-weight: 700; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
+th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+thead { background: var(--bg-light); }
+tr:hover { background: var(--bg-light); }
+.action-btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-right: 5px; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-warning { background: var(--warning); color: #fff; }
+
+/* Responsive */
+@media (max-width: 900px) {
+    .cards { flex-direction: column; }
+    .sidebar { width: 200px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <h2>Admin Panel</h2>
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Manage Users</a>
+    <a href="#">Assign Privileges</a>
+    <a href="#">Reports</a>
+    <a href="#">Analytics</a>
+    <a href="#">Settings</a>
+    <a href="{{ url_for('routes.logout') }}">Logout</a>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+        <input type="text" placeholder="Search user, trip, or report...">
+        <div class="user">
+            <span>{{ current_user.username }}</span>
+            <img src="{{ url_for('static', filename='images/user.png') }}" alt="Admin">
+        </div>
+    </div>
+
+    <!-- Cards -->
+    <div class="cards">
+        <div class="card">
+            <h3>Total Users</h3>
+            <p>{{ users|length or 0 }}</p>
+        </div>
+        <div class="card">
+            <h3>Total Drivers</h3>
+            <p>{{ users|selectattr("role", "equalto", "driver")|list|length or 0 }}</p>
+        </div>
+        <div class="card">
+            <h3>Total Chefs</h3>
+            <p>{{ users|selectattr("role", "equalto", "chef")|list|length or 0 }}</p>
+        </div>
+        <div class="card">
+            <h3>Total Admins</h3>
+            <p>{{ users|selectattr("role", "equalto", "admin")|list|length or 0 }}</p>
+        </div>
+    </div>
+
+    <!-- Manage Users Table -->
+    <h3 style="margin-bottom:15px;">Manage Users</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if users %}
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.role }}</td>
+                    <td>
+                        {% if user.role != 'admin' %}
+                        <form method="POST" action="{{ url_for('routes.update_role') }}" style="display:inline;">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            {% if user.role == 'driver' %}
+                            <input type="hidden" name="role" value="chef">
+                            <button class="action-btn btn-success" type="submit">Promote to Chef</button>
+                            {% elif user.role == 'chef' %}
+                            <input type="hidden" name="role" value="driver">
+                            <button class="action-btn btn-warning" type="submit">Demote to Driver</button>
+                            {% endif %}
+                        </form>
+                        <form method="POST" action="{{ url_for('routes.delete_user') }}" style="display:inline;">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <button class="action-btn btn-danger" type="submit">Remove</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="4" style="text-align:center;">No users available.</td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>

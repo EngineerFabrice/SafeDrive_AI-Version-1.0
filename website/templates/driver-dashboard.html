@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Driver Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --primary: #4f46e5;
+    --success: #10b981;
+    --danger: #ef4444;
+    --bg-light: #f3f4f6;
+    --text-dark: #1f2937;
+    --text-light: #6b7280;
+    --warning: #f59e0b;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+body { display:flex; min-height:100vh; background: var(--bg-light); color: var(--text-dark); }
+
+/* Sidebar */
+.sidebar { width:250px; background:#fff; border-right:1px solid #e5e7eb; padding:20px; display:flex; flex-direction:column; }
+.sidebar h2 { margin-bottom:30px; font-size:24px; color:var(--primary); }
+.sidebar a { display:flex; align-items:center; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; transition: background 0.2s; }
+.sidebar a:hover { background: var(--bg-light); }
+.sidebar a.active { background: var(--primary); color:#fff; }
+
+/* Main Content */
+.main { flex:1; padding:20px 30px; overflow-y:auto; }
+
+/* Tabs */
+.tabs { display:flex; gap:10px; margin-bottom:20px; }
+.tabs button { padding:10px 20px; border:none; border-radius:8px; cursor:pointer; background:#e5e7eb; color:var(--text-dark); font-weight:600; transition: all 0.2s; }
+.tabs button.active { background:var(--primary); color:#fff; }
+.tabs button:hover { opacity:0.85; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* Topbar */
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+.topbar input { padding:10px 15px; border-radius:10px; border:1px solid #d1d5db; width:250px; }
+.topbar .user { display:flex; align-items:center; gap:10px; }
+.topbar .user img { width:40px; height:40px; border-radius:50%; }
+
+/* Cards */
+.cards { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
+.card { flex:1 1 200px; background:#fff; padding:20px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
+.card h3 { font-size:16px; color:var(--text-light); margin-bottom:10px; }
+.card p { font-size:22px; font-weight:700; }
+
+/* Sections */
+.section { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
+.section .box { flex:1 1 300px; background:#fff; border-radius:15px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); position:relative; }
+.box h3 { margin-bottom:15px; color:var(--text-dark); }
+
+/* Table */
+table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
+th, td { padding:12px 15px; text-align:left; border-bottom:1px solid #e5e7eb; }
+thead { background:var(--bg-light); }
+tr:hover { background: var(--bg-light); }
+
+/* Detection Buttons */
+.detect-btn, .start-camera, .stop-camera, .print-btn { padding:10px 20px; border-radius:8px; border:none; cursor:pointer; font-size:16px; margin-top:10px; transition: all 0.2s; }
+.detect-btn { background:#007bff; color:white; }
+.start-camera { background:#0066ff; color:white; }
+.stop-camera { background:#ef4444; color:white; }
+.print-btn { background:#10b981; color:white; margin-left:10px; }
+.detect-btn:hover { background:#0056cc; }
+.start-camera:hover { background:#004bb3; }
+.stop-camera:hover { background:#cc3737; }
+.print-btn:hover { background:#0f9d5b; }
+
+/* Alerts */
+.alert-msg { font-weight:bold; font-size:18px; padding:15px; border-radius:10px; margin-top:15px; text-align:center; opacity:1; transition: opacity 0.3s; }
+.alert-danger { background:#ef4444; color:white; }
+.alert-success { background:#10b981; color:white; }
+.alert-warning { background: var(--warning); color:white; }
+
+/* Countdown overlay */
+.countdown-overlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.6); color:white; padding:10px 20px; border-radius:10px; font-size:20px; display:none; }
+
+@media (max-width:900px) { .cards, .section { flex-direction: column; } .sidebar { width:200px; } }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <h2>SafeDrive AI</h2>
+    <a href="#" class="active">Dashboard</a>
+    <a href="#">Trips</a>
+    <a href="#">Schedule</a>
+    <a href="#">Messages</a>
+    <a href="#">Analytics</a>
+    <a href="#">Vehicles</a>
+    <a href="#">Report</a>
+    <a href="#">Support</a>
+    <a href="#">Settings</a>
+    <a href="{{ url_for('routes.logout') }}">Logout</a>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+        <input type="text" placeholder="Search here...">
+        <div class="user">
+            <span>{{ username }}</span>
+            <img src="{{ url_for('static', filename='images/user.png') }}" alt="User">
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="active" onclick="switchTab('dashboardTab', this)">Dashboard</button>
+        <button onclick="switchTab('reportsTab', this)">Recent Detections</button>
+    </div>
+
+    <!-- Dashboard Tab -->
+    <div id="dashboardTab" class="tab-content active">
+        <div class="cards">
+            <div class="card"><h3>Total Trips</h3><p>{{ total_trips or 0 }}</p></div>
+            <div class="card"><h3>Distance Driven</h3><p>{{ total_distance or 0 }} km</p></div>
+            <div class="card"><h3>Driving Hours</h3><p>{{ driving_hours or "0h 0m" }}</p></div>
+            <div class="card"><h3>Rating</h3><p>{{ rating or "N/A" }}</p></div>
+        </div>
+
+        <div class="section">
+            <!-- Upload Image -->
+            <div class="box">
+                <h3>📤 Upload Image for Detection</h3>
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <input type="file" name="file" accept="image/*" required>
+                    <button type="submit" class="detect-btn">Detect</button>
+                </form>
+                <img id="uploadedPreview" style="margin-top:15px; width:100%; border-radius:10px; display:none;">
+                <div id="uploadResult" class="alert-msg" style="display:none;"></div>
+            </div>
+
+            <!-- Live Camera -->
+            <div class="box">
+                <h3>📷 Live Camera Detection</h3>
+                <button class="start-camera" onclick="startLiveDetection()">Start Detection</button>
+                <button class="stop-camera" onclick="stopLiveDetection()" disabled>Stop Detection</button>
+                <video id="camera" width="350" height="250" autoplay style="border-radius:10px; margin-top:10px; display:none;"></video>
+                <div class="countdown-overlay" id="countdownOverlay"></div>
+                <div id="liveResult" class="alert-msg" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports Tab -->
+    <div id="reportsTab" class="tab-content">
+        <div class="section">
+            <div class="box" style="width:100%;">
+                <h3>Recent Detections</h3>
+                <button onclick="fetchReports()">Refresh Reports</button>
+                <button class="print-btn" onclick="printReports()">🖨 Print</button>
+                <table id="reportsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Driver</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" style="text-align:center;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let cooldown=false, liveDetectionRunning=false, liveInterval=null, countdownInterval=null;
+
+// Tab switching
+function switchTab(tabId, btn){
+    document.querySelectorAll(".tab-content").forEach(tc=>tc.classList.remove("active"));
+    document.getElementById(tabId).classList.add("active");
+    document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+}
+
+// Fetch reports from database
+async function fetchReports(){
+    try {
+        const res = await fetch("/driver/reports_json");
+        const data = await res.json();
+        const tbody = document.querySelector("#reportsTable tbody");
+        tbody.innerHTML = "";
+        if(data.length === 0){
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No detections yet.</td></tr>';
+        } else {
+            data.forEach(r=>{
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td>${r.id}</td>
+                                <td>${r.username}</td>
+                                <td>${r.detection_type}</td>
+                                <td>${r.status}</td>
+                                <td>${r.timestamp}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch(err){
+        console.error(err);
+        document.querySelector("#reportsTable tbody").innerHTML = '<tr><td colspan="5" style="text-align:center;">Error fetching reports.</td></tr>';
+    }
+}
+
+// Print Reports
+function printReports(){
+    const tableContent = document.getElementById("reportsTable").outerHTML;
+    const newWin = window.open("");
+    newWin.document.write("<html><head><title>Print Reports</title></head><body>");
+    newWin.document.write(tableContent);
+    newWin.document.write("</body></html>");
+    newWin.document.close();
+    newWin.print();
+}
+
+// Save detection
+function saveDetection(payload){
+    fetch("/save_detection", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+    });
+}
+
+// Toggle mutual exclusivity
+function toggleUploadLiveButtons(disable){
+    document.querySelector(".detect-btn").disabled = disable;
+    document.querySelector(".start-camera").disabled = disable || liveDetectionRunning;
+}
+
+// Upload Image Detection
+document.getElementById("uploadForm").onsubmit = function(e){
+    e.preventDefault();
+    if(cooldown || liveDetectionRunning) return alert("🚨 Cannot detect now.");
+
+    toggleUploadLiveButtons(true);
+
+    const fileInput=document.querySelector("input[name='file']");
+    const preview=document.getElementById("uploadedPreview");
+    const resultBox=document.getElementById("uploadResult");
+    preview.src=URL.createObjectURL(fileInput.files[0]);
+    preview.style.display="block";
+    resultBox.style.display="block";
+    resultBox.className="alert-msg alert-warning";
+    resultBox.innerHTML="⏳ Detecting...";
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    fetch("/upload_image",{method:"POST",body:formData})
+    .then(res=>res.json())
+    .then(data=>{
+        const time=new Date().toLocaleTimeString();
+        let statusText="";
+       if(data.status==="no_person"){
+    resultBox.className="alert-msg alert-warning";
+    resultBox.innerHTML="⚠️ Align your face correctly!";
+    statusText="No Person Detected";
+}
+ else if(data.status==="alcoholic"){
+            resultBox.className="alert-msg alert-danger";
+            resultBox.innerHTML="🚨 Alcohol Detected!";
+            statusText="Alcohol Detected";
+            cooldown=true;
+            setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
+        } else {
+            resultBox.className="alert-msg alert-success";
+            resultBox.innerHTML="✅ Safe / Non-Alcoholic";
+            statusText="Safe / Non-Alcoholic";
+        }
+        saveDetection({detection_type:"Upload", status:statusText, timestamp:time});
+        toggleUploadLiveButtons(false);
+    });
+};
+
+// Live Detection
+function startLiveDetection(){
+    if(liveDetectionRunning || cooldown) return alert("Cannot start detection now.");
+    liveDetectionRunning=true;
+    toggleUploadLiveButtons(true);
+
+    const video=document.getElementById("camera");
+    const resultBox=document.getElementById("liveResult");
+    const startBtn=document.querySelector(".start-camera");
+    const stopBtn=document.querySelector(".stop-camera");
+    const countdownOverlay=document.getElementById("countdownOverlay");
+
+    video.style.display="block";
+    resultBox.style.display="block";
+    startBtn.disabled=true;
+    stopBtn.disabled=false;
+
+    let countdown=5;
+    countdownOverlay.style.display="block";
+    countdownOverlay.innerText=`⏳ Hold still... ${countdown}s`;
+
+    countdownInterval=setInterval(()=>{
+        countdown--;
+        countdownOverlay.innerText=`⏳ Hold still... ${countdown}s`;
+        if(countdown<=0){
+            clearInterval(countdownInterval);
+            countdownOverlay.style.display="none";
+
+            navigator.mediaDevices.getUserMedia({video:true})
+            .then(stream=>{
+                video.srcObject=stream;
+                let sampleCount=0;
+                liveInterval=setInterval(()=>{
+                    if(cooldown) return;
+                    sendLiveFrame(video,resultBox);
+                    sampleCount++;
+                    if(sampleCount>=3) stopLiveDetection();
+                },700);
+            }).catch(err=>{
+                liveDetectionRunning=false;
+                startBtn.disabled=false;
+                stopBtn.disabled=true;
+                toggleUploadLiveButtons(false);
+                alert("Camera access denied: "+err);
+            });
+        }
+    },1000);
+}
+
+function sendLiveFrame(video,resultBox){
+    const canvas=document.createElement("canvas");
+    canvas.width=video.videoWidth;
+    canvas.height=video.videoHeight;
+    canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+
+    canvas.toBlob(blob=>{
+        const formData=new FormData();
+        formData.append("frame",blob,"frame.jpg");
+        fetch("/live_detect",{method:"POST",body:formData})
+        .then(res=>res.json())
+        .then(data=>{
+            const time=new Date().toLocaleTimeString();
+            let statusText="";
+            if(data.status==="no_person"){
+                resultBox.className="alert-msg alert-danger";
+                resultBox.innerHTML="⚠️ No person detected!";
+                statusText="No Person Detected";
+            } else if(data.status==="alcoholic"){
+                resultBox.className="alert-msg alert-danger";
+                resultBox.innerHTML="🚨 Alcohol Detected!";
+                statusText="Alcohol Detected";
+                cooldown=true;
+                setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
+            } else {
+                resultBox.className="alert-msg alert-success";
+                resultBox.innerHTML="✅ Safe / Non-Alcoholic";
+                statusText="Safe / Non-Alcoholic";
+            }
+            saveDetection({detection_type:"Live", status:statusText, timestamp:time});
+        });
+    },"image/jpeg");
+}
+
+function stopLiveDetection(){
+    liveDetectionRunning=false;
+    clearInterval(liveInterval);
+    clearInterval(countdownInterval);
+
+    const video=document.getElementById("camera");
+    if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
+
+    document.querySelector(".start-camera").disabled=false;
+    document.querySelector(".stop-camera").disabled=true;
+    document.getElementById("liveResult").innerHTML="Detection stopped.";
+    toggleUploadLiveButtons(false);
+}
+
+// Cleanup
+window.addEventListener("beforeunload",()=>{
+    if(liveInterval) clearInterval(liveInterval);
+    if(countdownInterval) clearInterval(countdownInterval);
+    const video=document.getElementById("camera");
+    if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
+});
+
+// Auto-fetch reports on page load
+document.addEventListener("DOMContentLoaded", fetchReports);
+</script>
+
+</body>
+</html>

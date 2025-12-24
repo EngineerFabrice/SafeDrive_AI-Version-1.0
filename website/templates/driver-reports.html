@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Driver Reports - SafeDrive AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --primary: #4f46e5;
+    --success: #10b981;
+    --danger: #ef4444;
+    --bg-light: #f3f4f6;
+    --text-dark: #1f2937;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+body { display:flex; min-height:100vh; background: var(--bg-light); color: var(--text-dark); }
+
+.sidebar { width:250px; background:#fff; border-right:1px solid #e5e7eb; padding:20px; display:flex; flex-direction:column; }
+.sidebar h2 { margin-bottom:30px; font-size:24px; color:var(--primary); }
+.sidebar a { display:flex; align-items:center; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; transition: background 0.2s; }
+.sidebar a:hover { background: var(--bg-light); }
+.sidebar a.active { background: var(--primary); color:#fff; }
+
+.main { flex:1; padding:20px 30px; overflow-y:auto; }
+.table-container { background:#fff; padding:20px; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
+.status-safe { color: var(--success); font-weight:bold; }
+.status-alcohol { color: var(--danger); font-weight:bold; }
+.status-none { color: var(--text-light); font-weight:bold; }
+
+@media (max-width:900px) { .sidebar { width:200px; } table { font-size:12px; } }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <h2>SafeDrive AI</h2>
+    <a href="{{ url_for('routes.driver_dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('routes.driver_reports') }}" class="active">Reports</a>
+    <a href="{{ url_for('routes.logout') }}">Logout</a>
+</div>
+
+<div class="main">
+    <h2>Driver Detection Reports</h2>
+    <div class="table-container">
+        {% if reports %}
+        <table>
+            <thead>
+                <tr><th>#</th><th>Detection Type</th><th>Status</th><th>Timestamp</th></tr>
+            </thead>
+            <tbody>
+                {% for report in reports %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ report.detection_type }}</td>
+                    <td>
+                        {% if report.status=="Safe" %}
+                        <span class="status-safe">{{ report.status }}</span>
+                        {% elif report.status=="Alcohol Detected" %}
+                        <span class="status-alcohol">{{ report.status }}</span>
+                        {% else %}
+                        <span class="status-none">{{ report.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align:center; padding:20px; font-weight:bold;">No reports available.</div>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>
