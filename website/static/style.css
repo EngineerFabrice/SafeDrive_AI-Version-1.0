@@ -227,6 +227,89 @@ nav .auth .getstarted:hover {
   font-size: 14px;
 }
 
+.info-section {
+  padding: 80px 50px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.info-section.alt {
+  background: #071f3a;
+}
+
+.section-header {
+  margin-bottom: 40px;
+}
+
+.section-header h2 {
+  font-size: 38px;
+  margin-bottom: 16px;
+  color: #f7b500;
+}
+
+.section-header p {
+  max-width: 780px;
+  font-size: 18px;
+  color: #d3dff5;
+}
+
+.feature-grid,
+.process-step-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+}
+
+.card h3 {
+  font-size: 22px;
+  margin-bottom: 14px;
+  color: #fff;
+}
+
+.card p {
+  color: #d7e1f5;
+  line-height: 1.7;
+}
+
+.card ul {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 18px;
+}
+
+.card li {
+  position: relative;
+  padding-left: 26px;
+  margin-bottom: 12px;
+  color: #d7e1f5;
+}
+
+.card li:before {
+  content: "✔";
+  position: absolute;
+  left: 0;
+  color: #f7b500;
+}
+
+.about-copy {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 900px) {
+  .feature-grid,
+  .process-step-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- Form Pages ---------- */
 .form-container {
   display: flex;
