@@ -131,12 +131,43 @@ def admin_dashboard():
     total_chefs = sum(1 for u in users if u['role'] == 'chef')
     total_admins = sum(1 for u in users if u['role'] == 'admin')
 
-    # Fetch recent driver detection reports
     cursor.execute(
-        "SELECT driver_id, detection_type, status, timestamp "
-        "FROM driver_detection_reports ORDER BY timestamp DESC LIMIT 5"
+        "SELECT u.username AS driver_name, r.detection_type, r.status, r.timestamp "
+        "FROM driver_detection_reports r "
+        "LEFT JOIN users u ON r.driver_id=u.id "
+        "ORDER BY r.timestamp DESC LIMIT 20"
     )
     reports = cursor.fetchall()
+
+    report_type_counts = {"Upload": 0, "Live": 0}
+    risk_counts = {"Alcoholic": 0, "Safe": 0, "Drunk": 0, "Sober": 0, "No Person": 0}
+    driver_report_counts = {}
+    for report in reports:
+        dtype = report.get('detection_type') or 'Unknown'
+        if dtype in report_type_counts:
+            report_type_counts[dtype] += 1
+
+        status = (report.get('status') or '').lower()
+        if 'no person' in status:
+            risk_counts['No Person'] += 1
+        if 'alcohol:' in status:
+            if 'alcoholic' in status:
+                risk_counts['Alcoholic'] += 1
+            elif 'safe' in status:
+                risk_counts['Safe'] += 1
+        if 'drunk:' in status:
+            if 'drunk' in status:
+                risk_counts['Drunk'] += 1
+            elif 'sober' in status:
+                risk_counts['Sober'] += 1
+
+        driver_name = report.get('driver_name') or 'Unknown'
+        driver_report_counts[driver_name] = driver_report_counts.get(driver_name, 0) + 1
+
+    top_drivers = sorted(driver_report_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+    top_driver_names = [item[0] for item in top_drivers]
+    top_driver_counts = [item[1] for item in top_drivers]
+
     cursor.close()
     conn.close()
 
@@ -148,7 +179,11 @@ def admin_dashboard():
         total_users=total_users,
         total_drivers=total_drivers,
         total_chefs=total_chefs,
-        total_admins=total_admins
+        total_admins=total_admins,
+        report_type_counts=report_type_counts,
+        risk_counts=risk_counts,
+        top_driver_names=top_driver_names,
+        top_driver_counts=top_driver_counts
     )
 
 # ========================= CHEF DASHBOARD =========================
@@ -171,10 +206,33 @@ def chef_dashboard():
     completed_trips = cursor.fetchone()['count']
 
     cursor.execute(
-        "SELECT driver_id, detection_type, status, timestamp "
-        "FROM driver_detection_reports ORDER BY timestamp DESC LIMIT 5"
+        "SELECT u.username AS driver_name, r.detection_type, r.status, r.timestamp "
+        "FROM driver_detection_reports r "
+        "LEFT JOIN users u ON r.driver_id=u.id "
+        "ORDER BY r.timestamp DESC LIMIT 20"
     )
     reports = cursor.fetchall()
+
+    pending_reports = len(reports)
+    report_type_counts = {"Upload": 0, "Live": 0}
+    trip_status_counts = {"Planned": active_trips, "Completed": completed_trips, "Other": 0}
+    driver_risk_counts = {"Alcoholic": 0, "Drunk": 0, "Sober": 0, "No Person": 0}
+
+    for report in reports:
+        dtype = report.get('detection_type') or 'Unknown'
+        if dtype in report_type_counts:
+            report_type_counts[dtype] += 1
+
+        status = (report.get('status') or '').lower()
+        if 'alcoholic' in status:
+            driver_risk_counts['Alcoholic'] += 1
+        if 'drunk' in status:
+            driver_risk_counts['Drunk'] += 1
+        if 'sober' in status and 'drunk:' in status:
+            driver_risk_counts['Sober'] += 1
+        if 'no person' in status:
+            driver_risk_counts['No Person'] += 1
+
     cursor.close()
     conn.close()
 
@@ -184,7 +242,11 @@ def chef_dashboard():
         drivers=drivers,
         active_trips=active_trips,
         completed_trips=completed_trips,
-        reports=reports
+        pending_reports=pending_reports,
+        reports=reports,
+        report_type_counts=report_type_counts,
+        trip_status_counts=trip_status_counts,
+        driver_risk_counts=driver_risk_counts
     )
 
 # ========================= DRIVER DASHBOARD =========================
@@ -209,6 +271,16 @@ def driver_dashboard():
     total_minutes = sum(t.get("duration_minutes",0) for t in trips)
     driving_hours = f"{total_minutes//60}h {total_minutes%60}m"
 
+    trip_status_counts = {}
+    trip_distance_labels = []
+    trip_distance_values = []
+    for index, trip in enumerate(trips[-10:], start=1):
+        status = trip.get('status') or 'Unknown'
+        trip_status_counts[status] = trip_status_counts.get(status, 0) + 1
+        label = f"{trip.get('start_location','Trip')}"
+        trip_distance_labels.append(label)
+        trip_distance_values.append(trip.get('distance_km', 0))
+
     cursor.execute(
         "SELECT license, fuel_type, length, service_date FROM vehicles WHERE driver_id=%s LIMIT 1",
         (current_user.id,)
@@ -219,12 +291,31 @@ def driver_dashboard():
 
     cursor.execute(
         "SELECT detection_type, status, timestamp FROM driver_detection_reports "
-        "WHERE driver_id=%s ORDER BY timestamp DESC LIMIT 5",
+        "WHERE driver_id=%s ORDER BY timestamp DESC LIMIT 10",
         (current_user.id,)
     )
     reports = cursor.fetchall()
 
-    current_trip = next((t for t in trips if t['status'].lower()=="en route"), None)
+    detection_status_counts = {"No Person": 0, "Alcohol Detected": 0, "Safe / Non-Alcoholic": 0}
+    recent_detection_labels = []
+    recent_detection_values = []
+    for report in reports:
+        status_text = report.get('status') or ''
+        if 'no person' in status_text.lower():
+            detection_status_counts['No Person'] += 1
+        elif 'alcoholic' in status_text.lower() or 'drunk' in status_text.lower():
+            detection_status_counts['Alcohol Detected'] += 1
+        else:
+            detection_status_counts['Safe / Non-Alcoholic'] += 1
+
+        timestamp = report.get('timestamp')
+        if isinstance(timestamp, datetime):
+            recent_detection_labels.append(timestamp.strftime('%d %b %H:%M'))
+        else:
+            recent_detection_labels.append(str(timestamp))
+        recent_detection_values.append(1)
+
+    current_trip = next((t for t in trips if t['status'].lower() == "en route"), None)
     cursor.close()
     conn.close()
 
@@ -237,7 +328,13 @@ def driver_dashboard():
         driving_hours=driving_hours,
         vehicle=vehicle,
         current_trip=current_trip,
-        reports=reports
+        reports=reports,
+        detection_status_counts=detection_status_counts,
+        recent_detection_labels=recent_detection_labels,
+        recent_detection_values=recent_detection_values,
+        trip_status_counts=trip_status_counts,
+        trip_distance_labels=trip_distance_labels,
+        trip_distance_values=trip_distance_values
     )
 
 # ========================= HELPER: SAVE DETECTION REPORT =========================
