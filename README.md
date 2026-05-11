@@ -90,3 +90,6 @@ The system will automatically begin monitoring.
 Pull requests are welcome!
 Improve models, UI, documentation, or add new safety features.
 
+
+
+<img width="1536" height="1024" alt="Backend Logic" src="https://github.com/user-attachments/assets/1e8a24e7-7314-4093-90c2-5d17240a52b4" />
