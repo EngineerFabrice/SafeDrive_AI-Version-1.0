@@ -50,6 +50,26 @@ SafeDrive_AI-Version-1.0/
 
 ---
 
+
+
+
+Camera Frame
+     ↓
+YOLOv8n (Person Detection)
+     ↓
+Is person detected?
+     ├── NO → "No person detected"
+     │
+     └── YES
+          ↓
+   Crop face / ROI
+          ↓
+ Alcohol Classifier Model
+          ↓
+   Alcoholic / Non-Alcoholic
+
+   
+
 ## 🚀 How to Run the Project
 
 1. **Install required libraries**
