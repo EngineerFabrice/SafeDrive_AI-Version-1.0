@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Passenger Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root {
+    --primary:#4f46e5; --secondary:#6366f1; --success:#10b981; --warning:#f59e0b; --danger:#ef4444;
+    --bg-light:#f3f4f6; --text-dark:#1f2937; --text-light:#6b7280;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
+body{display:flex;min-height:100vh;background:var(--bg-light);color:var(--text-dark);}
+.sidebar{width:260px;background:#fff;border-right:1px solid #e5e7eb;padding:22px;display:flex;flex-direction:column;}
+.sidebar h2{margin-bottom:28px;font-size:22px;color:var(--primary);} .sidebar a{display:flex;align-items:center;padding:12px 14px;margin-bottom:10px;text-decoration:none;color:var(--text-dark);border-radius:10px;transition:background .2s;} .sidebar a:hover{background:var(--bg-light);} .sidebar a.active{background:var(--primary);color:#fff;}
+.main{flex:1;padding:24px 30px;overflow-y:auto;}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;}
+.topbar input{padding:10px 16px;border-radius:12px;border:1px solid #d1d5db;width:260px;}
+.user{display:flex;align-items:center;gap:12px;}
+.user img{width:44px;height:44px;border-radius:50%;}
+.cards{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:26px;}
+.card{flex:1 1 220px;background:#fff;padding:22px;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.06);}
+.card h3{font-size:15px;color:var(--text-light);margin-bottom:10px;}
+.card p{font-size:26px;font-weight:700;}
+.analytics-grid{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:26px;}
+.chart-card{flex:1 1 320px;background:#fff;border-radius:18px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.06);} .chart-card h3{margin-bottom:16px;font-size:18px;}
+.chart-card canvas{width:100%!important;height:280px!important;}
+.section{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:30px;}
+.box{flex:1 1 320px;background:#fff;border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.06);}
+.box h3{margin-bottom:18px;color:var(--text-dark);}
+.box label{display:block;margin-bottom:8px;font-weight:600;}
+.box input, .box textarea{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:14px;margin-bottom:14px;}
+.box button{background:var(--primary);color:#fff;border:none;padding:12px 18px;border-radius:14px;cursor:pointer;transition:opacity .2s;} .box button:hover{opacity:.92;}
+#map{width:100%;height:360px;border-radius:18px;}
+.table{width:100%;border-collapse:collapse;}
+.table th,.table td{padding:14px 12px;text-align:left;border-bottom:1px solid #e5e7eb;}
+.table thead{background:var(--bg-light);}
+@media(max-width:900px){.cards,.analytics-grid,.section{flex-direction:column;}.sidebar{width:100%;position:relative;}.main{padding:16px;}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+    <h2>Passenger Panel</h2>
+    <a href="{{ url_for('routes.passenger_dashboard') }}" class="active">Dashboard</a>
+    <a href="{{ url_for('routes.track_trip', trip_id=active_trip.id) if active_trip else '#' }}">Track Ride</a>
+    <a href="#">Booking History</a>
+    <a href="#">Support</a>
+    <a href="{{ url_for('routes.logout') }}">Logout</a>
+</div>
+<div class="main">
+    <div class="topbar">
+        <input type="text" placeholder="Search trips, drivers, status...">
+        <div class="user"><span>{{ username }}</span><img src="{{ url_for('static', filename='images/user.png') }}" alt="User"></div>
+    </div>
+    <div class="cards">
+        <div class="card"><h3>Active Ride</h3><p>{{ active_trip.status if active_trip else 'None' }}</p></div>
+        <div class="card"><h3>Assigned Driver</h3><p>{{ active_trip.driver_name if active_trip and active_trip.driver_name else 'Awaiting' }}</p></div>
+        <div class="card"><h3>Available Drivers</h3><p>{{ available_drivers or 0 }}</p></div>
+        <div class="card"><h3>Open Requests</h3><p>{{ trips|length }}</p></div>
+    </div>
+    <div class="analytics-grid">
+        <div class="chart-card"><h3>Driver Availability</h3><canvas id="passengerAvailabilityChart"></canvas></div>
+        <div class="chart-card"><h3>Recent Requests</h3><canvas id="passengerRequestsChart"></canvas></div>
+    </div>
+    <div class="section">
+        <div class="box">
+            <h3>Request a Ride</h3>
+            <form id="rideRequestForm">
+                <label for="pickup_address">Pickup Address</label>
+                <input type="text" id="pickup_address" name="pickup_address" placeholder="Enter pickup location" required>
+                <label for="dropoff_address">Dropoff Address</label>
+                <input type="text" id="dropoff_address" name="dropoff_address" placeholder="Enter destination" required>
+                <button type="submit">Request Ride</button>
+                <p id="rideRequestFeedback" style="margin-top:16px;font-weight:600;"></p>
+            </form>
+        </div>
+        <div class="box">
+            <h3>Current Ride Map</h3>
+            <div id="map"></div>
+            <p id="mapSubtitle" style="margin-top:12px;font-size:14px;color:#6b7280;"></p>
+        </div>
+    </div>
+    <div class="box">
+        <h3>Recent Trips</h3>
+        <table class="table">
+            <thead><tr><th>Trip</th><th>Status</th><th>Driver</th><th>Requested</th></tr></thead>
+            <tbody>
+                {% if trips %}
+                    {% for trip in trips %}
+                    <tr>
+                        <td>{{ trip.start_location or trip.pickup_address }} → {{ trip.end_location or trip.dropoff_address }}</td>
+                        <td>{{ trip.status }}</td>
+                        <td>{{ trip.driver_name or 'TBD' }}</td>
+                        <td>{{ trip.requested_at or trip.start_time }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="4" style="text-align:center;">No trips yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const availableDrivers = {{ available_drivers or 0 }};
+const requestsCount = {{ trips|length }};
+const activeStatus = '{{ active_trip.status if active_trip else "none" }}';
+
+const ctx1 = document.getElementById('passengerAvailabilityChart').getContext('2d');
+new Chart(ctx1, {type:'doughnut',data:{labels:['Available','Busy'],datasets:[{data:[availableDrivers, Math.max(0,5-availableDrivers)],backgroundColor:['#10b981','#ef4444']}]} ,options:{plugins:{legend:{position:'bottom'}}}});
+
+const ctx2 = document.getElementById('passengerRequestsChart').getContext('2d');
+new Chart(ctx2, {type:'bar',data:{labels:['Active','Completed','Cancelled'],datasets:[{label:'Requests',data:[{{ active_trip and 1 or 0 }},{{ trips|selectattr('status','equalto','completed')|list|length }},{{ trips|selectattr('status','equalto','cancelled')|list|length }}],backgroundColor:['#4f46e5','#10b981','#f59e0b']}]} ,options:{responsive:true,plugins:{legend:{display:false}}}});
+
+const map = L.map('map').setView([12.9716,77.5946], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const pickupMarker = L.marker([12.9716,77.5946]).addTo(map).bindPopup('Pickup');
+const dropoffMarker = L.marker([12.9352,77.6245]).addTo(map).bindPopup('Dropoff');
+const routeLine = L.polyline([[12.9716,77.5946],[12.9352,77.6245]],{color:'#4f46e5',weight:5}).addTo(map);
+
+function updateMap() {
+    if (activeStatus === 'assigned' || activeStatus === 'accepted' || activeStatus === 'ongoing') {
+        document.getElementById('mapSubtitle').textContent = 'Your ride is on the way. Live location updates appear when the driver starts moving.';
+    } else {
+        document.getElementById('mapSubtitle').textContent = 'No active ride. Request one to see live tracking.';
+    }
+}
+updateMap();
+
+async function pollNotifications() {
+    try {
+        const res = await fetch('/notifications/poll');
+        const notes = await res.json();
+        notes.slice(0,3).forEach(note=>{
+            if(Notification.permission==='granted'){
+                new Notification(note.title,{body:note.message});
+            }
+        });
+    } catch(e){console.warn(e);}
+}
+if('Notification' in window){Notification.requestPermission(); setInterval(pollNotifications,15000);}
+
+document.getElementById('rideRequestForm').onsubmit = async function(e){
+    e.preventDefault();
+    const pickupAddress = document.getElementById('pickup_address').value;
+    const dropoffAddress = document.getElementById('dropoff_address').value;
+    const payload = {pickup_address:pickupAddress, dropoff_address:dropoffAddress, pickup_lat:12.9716, pickup_lng:77.5946, dropoff_lat:12.9352, dropoff_lng:77.6245};
+    const res = await fetch('/passenger/request_ride',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data = await res.json();
+    const feedback = document.getElementById('rideRequestFeedback');
+    if(data.success){
+        feedback.textContent = data.assigned ? '✅ Ride assigned and driver notified.' : '⏳ Ride requested. Waiting for driver assignment.';
+    } else {
+        feedback.textContent = '❌ ' + (data.message||'Unable to request ride.');
+    }
+};
+</script>
+</body>
+</html>

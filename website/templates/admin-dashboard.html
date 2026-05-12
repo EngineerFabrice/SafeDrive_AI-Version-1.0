@@ -113,6 +113,7 @@ tr:hover { background: var(--bg-light); }
     <div class="topbar">
         <input type="text" placeholder="Search user, trip, or report...">
         <div class="user">
+            <button onclick="openEmailModal()" style="padding: 8px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 12px; transition: background 0.2s;" onmouseover="this.style.background='#4338ca'" onmouseout="this.style.background='#4f46e5'">📧 Send Email</button>
             <span>{{ current_user.username }}</span>
             <img src="{{ url_for('static', filename='images/user.png') }}" alt="Admin">
         </div>
@@ -247,3 +248,312 @@ tr:hover { background: var(--bg-light); }
     </script>
 </body>
 </html>
+
+<!-- Include Email Modal Component -->
+<style>
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    z-index: 1000;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -45%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h2 {
+    font-size: 18px;
+    margin: 0;
+    color: #1f2937;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.modal-close:hover {
+    color: #1f2937;
+}
+
+#emailForm {
+    padding: 20px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 14px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-group textarea {
+    resize: vertical;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+    border-radius: 0 0 12px 12px;
+    justify-content: flex-end;
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #4f46e5;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #4338ca;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #e5e7eb;
+    color: #1f2937;
+}
+
+.btn-secondary:hover {
+    background: #d1d5db;
+}
+
+small {
+    color: #6b7280;
+}
+</style>
+
+<div id="sendEmailModal" class="modal">
+    <div class="modal-overlay" onclick="closeEmailModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>📧 Send Email to Driver</h2>
+            <button class="modal-close" onclick="closeEmailModal()">✕</button>
+        </div>
+        
+        <form id="emailForm" onsubmit="handleEmailSubmit(event)">
+            <!-- Driver Selection -->
+            <div class="form-group">
+                <label for="email_driver_select">Select Driver *</label>
+                <select id="email_driver_select" name="driver_id" required onchange="updateDriverEmail()">
+                    <option value="">-- Choose a driver --</option>
+                </select>
+            </div>
+
+            <!-- Driver Email (Pre-filled) -->
+            <div class="form-group">
+                <label for="email_recipient">Driver Email *</label>
+                <input type="email" id="email_recipient" name="recipient_email" placeholder="driver@example.com" required readonly style="background-color: #f0f0f0; cursor: not-allowed;">
+            </div>
+
+            <!-- Subject Line -->
+            <div class="form-group">
+                <label for="email_subject">Subject (Optional)</label>
+                <input type="text" id="email_subject" name="subject" placeholder="e.g., Important Update, Trip Assignment..." maxlength="100">
+            </div>
+
+            <!-- Message Body -->
+            <div class="form-group">
+                <label for="email_body">Message Body *</label>
+                <textarea id="email_body" name="body" placeholder="Type your message here..." required style="min-height: 150px;"></textarea>
+                <small style="color: #999; display: block; margin-top: 6px;">
+                    💡 Message will be sent via Gmail with one click
+                </small>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeEmailModal()">Cancel</button>
+                <button type="submit" class="btn-primary">🚀 Open in Gmail</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Load drivers when modal opens
+async function loadDrivers() {
+    try {
+        const response = await fetch('/email/drivers_json');
+        const drivers = await response.json();
+        
+        const select = document.getElementById('email_driver_select');
+        // Clear existing options except the first one
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+        
+        // Add driver options
+        drivers.forEach(driver => {
+            const option = document.createElement('option');
+            option.value = driver.id;
+            option.setAttribute('data-email', driver.email);
+            option.setAttribute('data-username', driver.username);
+            option.textContent = `${driver.username} (${driver.email})`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load drivers:', error);
+        alert('Error loading drivers. Please refresh and try again.');
+    }
+}
+
+function openEmailModal() {
+    document.getElementById('sendEmailModal').style.display = 'block';
+    loadDrivers();
+}
+
+function closeEmailModal() {
+    document.getElementById('sendEmailModal').style.display = 'none';
+    // Reset form
+    document.getElementById('emailForm').reset();
+    document.getElementById('email_recipient').value = '';
+}
+
+function updateDriverEmail() {
+    const select = document.getElementById('email_driver_select');
+    const selectedOption = select.options[select.selectedIndex];
+    const email = selectedOption.getAttribute('data-email');
+    document.getElementById('email_recipient').value = email || '';
+}
+
+function handleEmailSubmit(event) {
+    event.preventDefault();
+    
+    const recipientEmail = document.getElementById('email_recipient').value;
+    const subject = document.getElementById('email_subject').value;
+    const body = document.getElementById('email_body').value;
+    
+    // Validate
+    if (!recipientEmail || !body) {
+        alert('Please fill in all required fields.');
+        return;
+    }
+    
+    // Generate mailto link
+    const mailtoLink = generateMailtoLink(recipientEmail, subject, body);
+    
+    // Open in Gmail/default email app
+    window.location.href = mailtoLink;
+    
+    // Close modal after a short delay
+    setTimeout(() => {
+        closeEmailModal();
+    }, 500);
+}
+
+function generateMailtoLink(email, subject, body) {
+    // Properly encode the body and subject for URL
+    const encodedSubject = encodeURIComponent(subject || '');
+    const encodedBody = encodeURIComponent(body);
+    
+    return `mailto:${email}?subject=${encodedSubject}&body=${encodedBody}`;
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(event) {
+    const modal = document.getElementById('sendEmailModal');
+    if (modal && event.target === modal) {
+        closeEmailModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeEmailModal();
+    }
+});
+</script>

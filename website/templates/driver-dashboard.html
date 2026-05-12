@@ -96,7 +96,7 @@ tr:hover { background: var(--bg-light); }
     <a href="#" class="active">Dashboard</a>
     <a href="#">Trips</a>
     <a href="#">Schedule</a>
-    <a href="#">Messages</a>
+    <a href="{{ url_for('routes.messages') }}">Messages</a>
     <a href="#">Analytics</a>
     <a href="#">Vehicles</a>
     <a href="#">Report</a>
@@ -120,6 +120,7 @@ tr:hover { background: var(--bg-light); }
     <!-- Tabs -->
     <div class="tabs">
         <button class="active" onclick="switchTab('dashboardTab', this)">Dashboard</button>
+        <button onclick="switchTab('assignedTripsTab', this)">📋 Assigned Trips</button>
         <button onclick="switchTab('reportsTab', this)">Recent Detections</button>
     </div>
 
@@ -167,6 +168,19 @@ tr:hover { background: var(--bg-light); }
                 <video id="camera" width="350" height="250" autoplay style="border-radius:10px; margin-top:10px; display:none;"></video>
                 <div class="countdown-overlay" id="countdownOverlay"></div>
                 <div id="liveResult" class="alert-msg" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assigned Trips Tab -->
+    <div id="assignedTripsTab" class="tab-content">
+        <div class="section">
+            <div class="box" style="width:100%;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <h3>🚗 Trips Assigned by Chef</h3>
+                    <button onclick="loadAssignedTrips()" style="padding:10px 18px;border:none;border-radius:10px;background:var(--primary);color:#fff;cursor:pointer;">🔄 Refresh</button>
+                </div>
+                <div id="tripsContainer" style="margin-top:20px;"></div>
             </div>
         </div>
     </div>
@@ -244,6 +258,74 @@ function printReports(){
     newWin.document.write("</body></html>");
     newWin.document.close();
     newWin.print();
+}
+
+async function loadAssignedTrips(){
+    const container = document.getElementById('tripsContainer');
+    container.innerHTML = '<p style="color:#6b7280;">Loading assigned trips...</p>';
+    try {
+        const res = await fetch('/driver/assigned_trips_json');
+        if(!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to fetch trips');
+        }
+        const trips = await res.json();
+        if(!trips || !trips.length){
+            container.innerHTML = '<p style="color:#6b7280;">No trips have been assigned to you yet.</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+        trips.forEach(trip => {
+            const tripCard = document.createElement('div');
+            tripCard.style.border = '1px solid #e5e7eb';
+            tripCard.style.borderRadius = '16px';
+            tripCard.style.padding = '18px';
+            tripCard.style.marginBottom = '16px';
+            tripCard.style.background = '#fff';
+            tripCard.innerHTML = `
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:220px;">
+                        <h4 style="margin:0 0 8px;">${trip.pickup_address} → ${trip.dropoff_address}</h4>
+                        <p style="margin:0 8px 6px; color:#374151;"><strong>Status:</strong> ${trip.status.toUpperCase()}</p>
+                        <p style="margin:0 8px 6px; color:#374151;"><strong>Chef:</strong> ${trip.chef_name || 'Unknown'} ${trip.chef_email ? `(${trip.chef_email})` : ''}</p>
+                        <p style="margin:0 8px 6px; color:#374151;"><strong>Scheduled:</strong> ${trip.scheduled_time || 'Not scheduled'}</p>
+                        <p style="margin:0 8px 6px; color:#374151;"><strong>Passengers:</strong> ${trip.num_passengers || 1} | <strong>Duration:</strong> ${trip.duration_minutes || 0} min</p>
+                    </div>
+                    <div style="min-width:180px; display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; align-items:flex-start;">
+                        ${trip.status === 'assigned' ? `<button onclick="updateTripStatus(${trip.id}, 'accepted')" style="padding:10px 16px;border:none;border-radius:10px;background:#10b981;color:#fff;cursor:pointer;">Accept</button>` : ''}
+                        ${trip.status === 'assigned' ? `<button onclick="updateTripStatus(${trip.id}, 'rejected')" style="padding:10px 16px;border:none;border-radius:10px;background:#ef4444;color:#fff;cursor:pointer;">Reject</button>` : ''}
+                    </div>
+                </div>
+                ${trip.special_instructions ? `<p style="margin:16px 0 0; color:#4b5563;"><strong>Instructions:</strong> ${trip.special_instructions}</p>` : ''}
+            `;
+            container.appendChild(tripCard);
+        });
+    } catch (err) {
+        container.innerHTML = '<p style="color:#ef4444;">⚠️ ' + (err.message || 'Unable to load assigned trips at this time.') + '</p>';
+        console.error(err);
+    }
+}
+
+async function updateTripStatus(tripId, status){
+    try {
+        const res = await fetch('/trip/update_status', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({trip_id: tripId, status})
+        });
+        const data = await res.json();
+        if(!data.success){
+            alert('Error: ' + (data.message || 'Could not update trip'));
+            return;
+        }
+        loadAssignedTrips();
+        fetchReports();
+        alert('Trip ' + status + ' successfully.');
+    } catch (err) {
+        console.error(err);
+        alert('Unable to update trip status.');
+    }
 }
 
 // Save detection
@@ -414,6 +496,8 @@ window.addEventListener("beforeunload",()=>{
 // Auto-fetch reports on page load
 document.addEventListener("DOMContentLoaded", function() {
     fetchReports();
+    loadAssignedTrips();
+    setInterval(loadAssignedTrips, 12000);
 
     const tripStatusData = {{ trip_status_counts|tojson }};
     const detectionCounts = {{ detection_status_counts|tojson }};

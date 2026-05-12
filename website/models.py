@@ -19,6 +19,9 @@ class User(UserMixin):
     def is_driver(self):
         return self.role == 'driver'
 
+    def is_passenger(self):
+        return self.role == 'passenger'
+
     # ------------------ Flask-Login ------------------
     def get_id(self):
         return str(self.id)

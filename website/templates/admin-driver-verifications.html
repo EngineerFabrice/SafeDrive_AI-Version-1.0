@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Driver Verifications</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',sans-serif;background:#f3f4f6;color:#1f2937;}
+.page{padding:24px;max-width:1200px;margin:0 auto;}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.table{width:100%;border-collapse:collapse;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 15px 35px rgba(0,0,0,.08);}
+th,td{padding:16px;text-align:left;border-bottom:1px solid #e5e7eb;}
+th{background:#f8fafc;font-weight:700;color:#374151;}
+.status{padding:6px 10px;border-radius:999px;font-weight:700;display:inline-block;}
+.status.approved{background:#d1fae5;color:#065f46;}
+.status.rejected{background:#fee2e2;color:#991b1b;}
+.status.pending{background:#fef3c7;color:#92400e;}
+.button-group button{margin-right:8px;padding:10px 16px;border:none;border-radius:12px;color:#fff;cursor:pointer;transition:opacity .2s;}
+.button-group .approve{background:#10b981;}
+.button-group .reject{background:#ef4444;}
+.button-group button:hover{opacity:.92;}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="header"><h1>Driver License Verification</h1></div>
+    <table class="table">
+        <thead>
+            <tr><th>Driver</th><th>Email</th><th>Phone</th><th>License Number</th><th>Document</th><th>Status</th><th>Trust Level</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% if profiles %}
+                {% for profile in profiles %}
+                <tr>
+                    <td>{{ profile.username }}</td>
+                    <td>{{ profile.email }}</td>
+                    <td>{{ profile.phone or 'N/A' }}</td>
+                    <td>{{ profile.license_number or 'N/A' }}</td>
+                    <td>{% if profile.license_file %}<a href="{{ url_for('static', filename='uploads/licenses/' ~ profile.license_file) }}" target="_blank">View</a>{% else %}N/A{% endif %}</td>
+                    <td><span class="status {{ profile.verification_status }}">{{ profile.verification_status }}</span></td>
+                    <td>{{ profile.trust_level }}</td>
+                    <td class="button-group">
+                        <button class="approve" onclick="window.location='{{ url_for('routes.admin_update_verification', profile_id=profile.id, action='approve') }}'">Approve</button>
+                        <button class="reject" onclick="window.location='{{ url_for('routes.admin_update_verification', profile_id=profile.id, action='reject') }}'">Reject</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="8" style="text-align:center;padding:22px;">No driver profiles pending verification.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>

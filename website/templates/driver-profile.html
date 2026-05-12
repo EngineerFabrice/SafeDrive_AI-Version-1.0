@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Driver Profile</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',sans-serif;background:#f3f4f6;color:#1f2937;}
+.page{padding:24px;max-width:1100px;margin:0 auto;}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.card{background:#fff;padding:24px;border-radius:20px;box-shadow:0 15px 35px rgba(0,0,0,.08);margin-bottom:20px;}
+.card h2{margin-bottom:16px;}
+.form-group{margin-bottom:16px;}
+label{display:block;font-weight:700;margin-bottom:8px;}
+input,button{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:14px;font-size:15px;}
+button{background:#4f46e5;color:#fff;border:none;cursor:pointer;transition:all .2s;}button:hover{opacity:.92;}
+.status{font-weight:700;color:#10b981;}
+.status.rejected{color:#ef4444;}
+.status.pending{color:#f59e0b;}
+.img-preview{max-width:260px;border-radius:14px;margin-top:12px;}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="header"><h1>Driver Profile & License Verification</h1></div>
+    <div class="card">
+        <h2>Your Verification Status</h2>
+        {% if profile %}
+            <p><strong>Status:</strong> <span class="status {{ profile.verification_status }}">{{ profile.verification_status|title }}</span></p>
+            <p><strong>Trust level:</strong> {{ profile.trust_level }}</p>
+            <p><strong>Compliance notes:</strong> {{ profile.compliance_notes or 'No notes yet.' }}</p>
+        {% else %}
+            <p>No verification profile found. Submit your license to get approved.</p>
+        {% endif %}
+    </div>
+    <div class="card">
+        <h2>Update Profile</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group"><label for="phone">Phone</label><input type="text" id="phone" name="phone" value="{{ profile.phone if profile else '' }}"></div>
+            <div class="form-group"><label for="license_number">License Number</label><input type="text" id="license_number" name="license_number" value="{{ profile.license_number if profile else '' }}"></div>
+            <div class="form-group"><label for="license_file">License Document</label><input type="file" id="license_file" name="license_file" accept="image/*,application/pdf"></div>
+            {% if profile and profile.license_file %}
+                <div class="form-group"><strong>Previous upload:</strong> {{ profile.license_file }}</div>
+            {% endif %}
+            <button type="submit">Submit for Verification</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

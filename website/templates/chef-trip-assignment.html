@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Chef Trip Assignment</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',sans-serif;background:#f3f4f6;color:#1f2937;}
+.header{padding:24px;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.06);display:flex;justify-content:space-between;align-items:center;}
+.header h1{font-size:22px;margin:0;}
+.container{padding:24px;max-width:900px;margin:0 auto;}
+.card{background:#fff;padding:24px;border-radius:18px;box-shadow:0 15px 35px rgba(0,0,0,.08);margin-bottom:20px;}
+.card h2{margin-bottom:20px;font-size:18px;color:#1f2937;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.form-group{grid-column:span 1;}
+.form-group.full{grid-column:span 2;}
+label{display:block;font-weight:600;margin-bottom:8px;font-size:14px;color:#374151;}
+input,select,textarea{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:12px;font-size:14px;font-family:inherit;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.1);}
+button{width:100%;padding:14px;background:#4f46e5;color:#fff;border:none;border-radius:12px;font-weight:600;cursor:pointer;transition:all .2s;}
+button:hover{opacity:.92;box-shadow:0 10px 25px rgba(79,70,229,.2);}
+.success-msg{background:#d1fae5;color:#065f46;padding:16px;border-radius:12px;margin-bottom:16px;border-left:4px solid #10b981;}
+.error-msg{background:#fee2e2;color:#991b1b;padding:16px;border-radius:12px;margin-bottom:16px;border-left:4px solid #ef4444;}
+.recent-trips{background:#fff;border-radius:18px;box-shadow:0 15px 35px rgba(0,0,0,.08);padding:24px;}
+.trip-item{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+.trip-info h4{margin:0 0 6px 0;font-size:15px;}
+.trip-info p{margin:0;font-size:13px;color:#6b7280;}
+.trip-status{padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px;}
+.trip-status.pending{background:#fef3c7;color:#92400e;}
+.trip-status.assigned{background:#dbeafe;color:#0c4a6e;}
+.trip-status.completed{background:#d1fae5;color:#065f46;}
+@media(max-width:900px){.form-grid{grid-template-columns:1fr;}.form-group.full{grid-column:span 1;}}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>🍱 Chef Trip Assignment</h1>
+    <div>
+        <a href="{{ url_for('routes.chef_dashboard') }}" style="color:#4f46e5;text-decoration:none;font-weight:600;">← Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="container">
+    {% if success_msg %}
+    <div class="success-msg">✅ {{ success_msg }}</div>
+    {% endif %}
+    {% if error_msg %}
+    <div class="error-msg">❌ {{ error_msg }}</div>
+    {% endif %}
+
+    <div class="card">
+        <h2>Create New Trip Assignment</h2>
+        <form method="POST" action="{{ url_for('routes.chef_assign_trip') }}">
+            <div class="form-grid">
+                <!-- Driver Selection -->
+                <div class="form-group full">
+                    <label for="driver_id">Select Driver *</label>
+                    <select id="driver_id" name="driver_id" required>
+                        <option value="">-- Choose a driver --</option>
+                        {% for driver in available_drivers %}
+                        <option value="{{ driver.id }}">{{ driver.username }} ({{ driver.email }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Pickup Location -->
+                <div class="form-group">
+                    <label for="pickup_address">Pickup Location *</label>
+                    <input type="text" id="pickup_address" name="pickup_address" placeholder="e.g., Hotel Grand Plaza" required>
+                </div>
+
+                <!-- Dropoff Location -->
+                <div class="form-group">
+                    <label for="dropoff_address">Destination *</label>
+                    <input type="text" id="dropoff_address" name="dropoff_address" placeholder="e.g., Airport Terminal 1" required>
+                </div>
+
+                <!-- Number of Passengers -->
+                <div class="form-group">
+                    <label for="num_passengers">Number of Passengers *</label>
+                    <input type="number" id="num_passengers" name="num_passengers" min="1" max="8" value="1" required>
+                </div>
+
+                <!-- Duration -->
+                <div class="form-group">
+                    <label for="duration_minutes">Estimated Duration (minutes) *</label>
+                    <input type="number" id="duration_minutes" name="duration_minutes" min="5" value="30" required>
+                </div>
+
+                <!-- Scheduled Time -->
+                <div class="form-group">
+                    <label for="scheduled_time">Scheduled Time/Date *</label>
+                    <input type="datetime-local" id="scheduled_time" name="scheduled_time" required>
+                </div>
+
+                <!-- Distance (optional) -->
+                <div class="form-group">
+                    <label for="distance_km">Distance (km)</label>
+                    <input type="number" id="distance_km" name="distance_km" min="0" step="0.1" placeholder="e.g., 15.5">
+                </div>
+
+                <!-- Special Instructions -->
+                <div class="form-group full">
+                    <label for="special_instructions">Special Instructions / Notes</label>
+                    <textarea id="special_instructions" name="special_instructions" rows="4" placeholder="e.g., Wait for 10 minutes at pickup, VIP passenger, wheelchair accessibility needed, etc."></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="form-group full">
+                    <button type="submit">📤 Assign Trip to Driver</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Recent Assignments -->
+    {% if recent_trips %}
+    <div class="recent-trips">
+        <h2 style="margin-bottom:20px;font-size:18px;">Recent Assignments (Last 10)</h2>
+        {% for trip in recent_trips %}
+        <div class="trip-item">
+            <div class="trip-info">
+                <h4>{{ trip.pickup_address }} → {{ trip.dropoff_address }}</h4>
+                <p><strong>Driver:</strong> {{ trip.driver_name }}</p>
+                <p><strong>Passengers:</strong> {{ trip.num_passengers }} | <strong>Duration:</strong> {{ trip.duration_minutes }} min | <strong>Assigned:</strong> {{ trip.assigned_at }}</p>
+            </div>
+            <span class="trip-status {{ trip.status }}">{{ trip.status|upper }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

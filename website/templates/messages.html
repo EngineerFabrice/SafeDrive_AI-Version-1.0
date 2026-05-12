@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Messages</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --primary:#4f46e5; --success:#10b981; --danger:#ef4444; --bg:#f3f4f6; --text:#1f2937; --muted:#6b7280; }
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',sans-serif; }
+body { min-height:100vh; background:#f3f4f6; color:var(--text); }
+.page { display:flex; }
+.sidebar { width:250px; background:#fff; border-right:1px solid #e5e7eb; padding:24px 18px; display:flex; flex-direction:column; gap:8px; }
+.sidebar h2 { color:var(--primary); margin-bottom:18px; }
+.sidebar a { text-decoration:none; color:var(--text); padding:12px 14px; border-radius:10px; display:block; }
+.sidebar a:hover, .sidebar a.active { background:#eef2ff; color:var(--primary); }
+.main { flex:1; padding:24px; }
+.header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:22px; }
+.header h1 { font-size:26px; }
+.topbar { display:flex; gap:12px; align-items:center; }
+.badge { background:var(--danger); color:#fff; padding:4px 10px; border-radius:999px; font-size:12px; }
+.board { display:grid; grid-template-columns:1.2fr 1.8fr; gap:20px; }
+.panel { background:#fff; border-radius:20px; box-shadow:0 14px 40px rgba(15,23,42,.08); padding:22px; }
+.panel h2 { margin-bottom:18px; font-size:20px; }
+.message-list { display:flex; flex-direction:column; gap:12px; max-height:calc(100vh - 220px); overflow:auto; }
+.message-card { border:1px solid #e5e7eb; border-radius:18px; padding:14px; cursor:pointer; transition:all .15s ease; }
+.message-card:hover { background:#f8fafc; }
+.message-card.active { border-color:var(--primary); background:#eef2ff; }
+.message-card p { color:var(--muted); font-size:13px; margin-top:8px; }
+.message-card .title { font-weight:700; margin-bottom:6px; }
+.message-detail { display:flex; flex-direction:column; gap:18px; }
+.message-detail .meta { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+.message-detail .meta span { color:var(--muted); font-size:13px; }
+.message-detail .body { white-space:pre-wrap; color:#334155; line-height:1.7; }
+.form-group { margin-bottom:16px; }
+label { display:block; margin-bottom:8px; font-weight:600; }
+input,textarea,select { width:100%; padding:12px 14px; border:1px solid #d1d5db; border-radius:12px; font-family:inherit; font-size:14px; }
+textarea { resize:vertical; min-height:140px; }
+button { border:none; border-radius:14px; padding:14px 20px; cursor:pointer; font-weight:700; background:var(--primary); color:#fff; transition:all .2s; }
+button:hover { opacity:.95; }
+.section-row { display:flex; gap:20px; flex-wrap:wrap; }
+@media(max-width:1100px){ .board{grid-template-columns:1fr;}} 
+@media(max-width:700px){ .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;} .sidebar h2{width:100%;} }
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="sidebar">
+        <h2>SafeDrive AI</h2>
+        <a href="{{ url_for('routes.chef_dashboard') if role == 'chef' else url_for('routes.driver_dashboard') }}">Dashboard</a>
+        <a href="#" class="active">Messages <span class="badge" id="unreadBadge">{{ unread_count }}</span></a>
+        <a href="{{ url_for('routes.chef_trip_assignment') if role == 'chef' else url_for('routes.driver_dashboard') }}">Trips</a>
+        <a href="#">Support</a>
+        <a href="{{ url_for('routes.logout') }}">Logout</a>
+    </div>
+    <main class="main">
+        <div class="header">
+            <div>
+                <h1>📬 Messages</h1>
+                <p style="color:var(--muted); margin-top:6px;">Internal messaging between chefs/admin and drivers.</p>
+            </div>
+            <div class="topbar">
+                <span>{{ username }}</span>
+            </div>
+        </div>
+
+        <div class="board">
+            <div class="panel">
+                <div class="section-row">
+                    <div style="flex:1;">
+                        <h2>Inbox</h2>
+                    </div>
+                    <div style="min-width:180px;"> 
+                        <button onclick="showTab('inbox')">Inbox</button>
+                        <button onclick="showTab('sent')" style="background:#10b981;">Sent</button>
+                    </div>
+                </div>
+                <div id="messageList" class="message-list">
+                    <p style="color:var(--muted);">Loading messages…</p>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="message-detail" id="detailPane">
+                    <div>
+                        <h2 id="detailSubject">Select a message</h2>
+                        <p id="detailMeta" class="meta">Choose a message from the list to view details.</p>
+                    </div>
+                    <div id="detailBody" class="body">Messages appear here when selected.</div>
+                    <div id="replySection" style="display:none;">
+                        <h2>Reply</h2>
+                        <form id="replyForm" action="/messages/send" method="post">
+                            <input type="hidden" id="replyReceiverEmail" name="receiver_email">
+                            <input type="hidden" id="replyOriginalSenderId" name="original_sender_id">
+                            <input type="hidden" id="replySubject" name="subject">
+                            <div class="form-group">
+                                <label for="replyBody">Message</label>
+                                <textarea id="replyBody" name="body" required></textarea>
+                            </div>
+                            <button type="submit">Send Reply</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if role == 'chef' or role == 'admin' %}
+        <div class="panel" style="margin-top:22px;">
+            <h2>Send Direct Message</h2>
+            <form id="sendForm" action="/messages/send" method="post">
+                <div class="form-group">
+                    <label for="receiver_email">Driver Email</label>
+                    <input list="driverEmails" id="receiver_email" name="receiver_email" placeholder="driver@example.com" required>
+                    <datalist id="driverEmails">
+                        {% for driver in drivers %}
+                        <option value="{{ driver.email }}">{{ driver.username }}</option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label for="subject">Subject</label>
+                    <input id="subject" name="subject" placeholder="Optional subject">
+                </div>
+                <div class="form-group">
+                    <label for="body">Message</label>
+                    <textarea id="body" name="body" required></textarea>
+                </div>
+                <button type="submit">Send Message</button>
+            </form>
+        </div>
+        {% endif %}
+    </main>
+</div>
+<script>
+let currentTab = 'inbox';
+let selectedMessageId = null;
+const role = '{{ role }}';
+const userId = {{ user_id | default(0) }};
+
+function showTab(tab){
+    currentTab = tab;
+    loadMessages();
+}
+
+async function loadMessages(){
+    const list = document.getElementById('messageList');
+    list.innerHTML = '<p style="color:#6b7280;">Loading messages…</p>';
+    const endpoint = currentTab === 'sent' ? '/messages/sent_json' : '/messages/inbox_json';
+    try {
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        if (!Array.isArray(data) || !data.length) {
+            list.innerHTML = '<p style="color:#6b7280;">No messages found.</p>';
+            return;
+        }
+        list.innerHTML = '';
+        data.forEach(msg => {
+            const card = document.createElement('div');
+            card.className = 'message-card' + (selectedMessageId === msg.id ? ' active' : '');
+            card.onclick = () => loadMessageDetail(msg.id);
+            card.innerHTML = `<div class="title">${msg.subject || 'No subject'}</div><div><strong>${currentTab === 'sent' ? msg.receiver_name : msg.sender_name}</strong> · ${msg.created_at}</div><p>${msg.preview}</p>`;
+            if (currentTab === 'inbox' && msg.status === 'unread') {
+                const badge = document.createElement('span');
+                badge.textContent = 'Unread';
+                badge.style.cssText = 'background:#ef4444;color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:8px;';
+                card.querySelector('div').appendChild(badge);
+            }
+            list.appendChild(card);
+        });
+    } catch (err) {
+        list.innerHTML = '<p style="color:#ef4444;">Unable to load messages.</p>';
+        console.error(err);
+    }
+}
+
+async function loadMessageDetail(id){
+    try {
+        const res = await fetch(`/messages/view/${id}`);
+        const msg = await res.json();
+        if (msg.error) {
+            alert(msg.error);
+            return;
+        }
+        selectedMessageId = id;
+        document.getElementById('detailSubject').textContent = msg.subject || 'No subject';
+        document.getElementById('detailMeta').textContent = `From: ${msg.sender_name} <${msg.sender_email}> · ${msg.sender_role} · ${msg.created_at}`;
+        document.getElementById('detailBody').textContent = msg.body;
+        document.getElementById('replySection').style.display = (role === 'driver' && msg.receiver_id === userId) ? 'block' : 'none';
+        // The driver reply form will be handled server-side with the email and sender id.
+        document.getElementById('replyReceiverEmail').value = msg.sender_email;
+        document.getElementById('replyOriginalSenderId').value = msg.sender_id;
+        document.getElementById('replySubject').value = `Re: ${msg.subject || 'No subject'}`;
+        loadMessages();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function refreshUnreadCount(){
+    try {
+        const res = await fetch('/messages/unread_count');
+        const data = await res.json();
+        document.getElementById('unreadBadge').textContent = data.count || 0;
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    loadMessages();
+    refreshUnreadCount();
+    setInterval(() => {
+        loadMessages();
+        refreshUnreadCount();
+    }, 12000);
+});
+</script>
+</body>
+</html>
