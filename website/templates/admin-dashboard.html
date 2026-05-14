@@ -467,8 +467,13 @@ small {
 async function loadDrivers() {
     try {
         const response = await fetch('/email/drivers_json');
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => null);
+            const message = errorBody?.error || 'Error loading drivers. Please refresh and try again.';
+            throw new Error(`${response.status} ${response.statusText}: ${message}`);
+        }
+
         const drivers = await response.json();
-        
         const select = document.getElementById('email_driver_select');
         // Clear existing options except the first one
         while (select.options.length > 1) {

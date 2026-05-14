@@ -1,5 +1,5 @@
 # website/routes.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from . import User, get_connection, get_user_by_id, bcrypt
 from .yolo_detector import detect_person
@@ -1322,16 +1322,26 @@ def email_drivers_json():
     """Fetch all drivers for email recipient selection - Chef/Admin only"""
     if not (current_user.is_chef() or current_user.is_admin()):
         return jsonify({'error': 'Access denied'}), 403
-    
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, username, email FROM users WHERE role='driver' ORDER BY username ASC"
-    )
-    drivers = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, username, email FROM users WHERE role='driver' ORDER BY username ASC"
+        )
+        drivers = cursor.fetchall()
+    except Exception as exc:
+        if current_app:
+            current_app.logger.exception('Failed to load drivers for email compose')
+        return jsonify({'error': 'Unable to load drivers. Please try again later.'}), 500
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
     drivers_list = [
         {'id': d['id'], 'username': d['username'], 'email': d['email']}
         for d in drivers
