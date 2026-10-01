@@ -264,6 +264,12 @@ document.getElementById("uploadForm").onsubmit = function(e){
     .then(data=>{
         const time=new Date().toLocaleTimeString();
         let statusText="";
+        if(data.status==="deprecated"){
+            resultBox.className="alert-msg alert-warning";
+            resultBox.innerHTML="⚠️ "+data.message;
+            toggleUploadLiveButtons(false);
+            return;
+        }
        if(data.status==="no_person"){
     resultBox.className="alert-msg alert-warning";
     resultBox.innerHTML="⚠️ Align your face correctly!";
@@ -276,9 +282,10 @@ document.getElementById("uploadForm").onsubmit = function(e){
             cooldown=true;
             setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
         } else {
-            resultBox.className="alert-msg alert-success";
-            resultBox.innerHTML="✅ Safe / Non-Alcoholic";
-            statusText="Safe / Non-Alcoholic";
+            // Never treat an unrecognised response as "safe".
+            resultBox.className="alert-msg alert-warning";
+            resultBox.innerHTML="⚠️ No result available";
+            statusText="No Result";
         }
         saveDetection({detection_type:"Upload", status:statusText, timestamp:time});
         toggleUploadLiveButtons(false);
@@ -348,6 +355,12 @@ function sendLiveFrame(video,resultBox){
         .then(data=>{
             const time=new Date().toLocaleTimeString();
             let statusText="";
+            if(data.status==="deprecated"){
+                stopLiveDetection();  // sets its own text, so write the message after it
+                resultBox.className="alert-msg alert-warning";
+                resultBox.innerHTML="⚠️ "+data.message;
+                return;
+            }
             if(data.status==="no_person"){
                 resultBox.className="alert-msg alert-danger";
                 resultBox.innerHTML="⚠️ No person detected!";
@@ -359,9 +372,10 @@ function sendLiveFrame(video,resultBox){
                 cooldown=true;
                 setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
             } else {
-                resultBox.className="alert-msg alert-success";
-                resultBox.innerHTML="✅ Safe / Non-Alcoholic";
-                statusText="Safe / Non-Alcoholic";
+                // Never treat an unrecognised response as "safe".
+                resultBox.className="alert-msg alert-warning";
+                resultBox.innerHTML="⚠️ No result available";
+                statusText="No Result";
             }
             saveDetection({detection_type:"Live", status:statusText, timestamp:time});
         });

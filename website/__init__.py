@@ -105,6 +105,10 @@ def create_app():
     from .routes import routes
     app.register_blueprint(routes)
 
+    # Real-time CV engine access (engine itself lives in the top-level `engine` package)
+    from .monitoring import monitoring
+    app.register_blueprint(monitoring)
+
     # Optional: print registered routes after blueprint registration
     print("\n[INFO] Registered routes:")
     for rule in app.url_map.iter_rules():

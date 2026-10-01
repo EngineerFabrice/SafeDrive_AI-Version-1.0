@@ -2,40 +2,18 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from . import User, get_connection, bcrypt
-from .yolo_detector import detect_person
 from datetime import datetime
-import numpy as np
-from PIL import Image
-import cv2
-import tensorflow as tf
-import threading
 
 routes = Blueprint("routes", __name__)
 
-# -------------------- MODEL PLACEHOLDERS --------------------
-driver_model = None
-drunk_model = None
-model_lock = threading.Lock()  # To avoid race conditions
-
-def load_models():
-    """Load TensorFlow models lazily."""
-    global driver_model, drunk_model
-    with model_lock:
-        if driver_model is None:
-            driver_model = tf.keras.models.load_model("driver_alcoholism_model.h5")
-        if drunk_model is None:
-            drunk_model = tf.keras.models.load_model("Drunking_Detection_Model.h5")
-
-CLASS_NAMES_DRIVER = ["Alcoholic", "Non-Alcoholic"]
-CLASS_NAMES_DRUNK = ["Drunk", "Sober"]
-
-# -------------------- IMAGE PREPROCESSING --------------------
-def preprocess_image(img, target_size=(224,224)):
-    """Resize, normalize, expand dims for model prediction."""
-    img = cv2.resize(img, target_size)
-    img = img.astype("float32") / 255.0
-    img = np.expand_dims(img, axis=0)
-    return img
+# The legacy single-image classifiers (driver_alcoholism_model.h5 /
+# Drunking_Detection_Model.h5 via website/yolo_detector.py) are no longer
+# loaded here. Live analysis runs in the `engine` package and is exposed
+# through the /monitoring endpoints (website/monitoring.py).
+LEGACY_DETECTION_MESSAGE = (
+    "This detection endpoint is deprecated. Live analysis now runs in the SafeDrive "
+    "engine; see /monitoring/status. No impairment result is available yet."
+)
 
 # ========================= HOME =========================
 @routes.route('/')
@@ -253,71 +231,17 @@ def save_detection_report(driver_id, detection_type, status):
     cursor.close()
     conn.close()
 
-# ========================= UPLOAD IMAGE DETECTION =========================
+# ========================= LEGACY DETECTION (DEPRECATED) =========================
+# These endpoints used to classify single uploaded frames with whole-image
+# models and returned "safe"/"sober" verdicts. They are retired: the models
+# were never present in the repository, single frames were sent over HTTP,
+# and the dashboard showed "Safe" for any response it did not recognise.
+# They now answer 410 Gone without running any model or saving a report.
 @routes.route("/upload_image", methods=["POST"])
-@login_required
-def upload_image():
-    if not current_user.is_driver():
-        return jsonify({"status":"error","message":"Only drivers can detect."})
-
-    load_models()  # lazy load models
-    file = request.files.get("file")
-    if not file:
-        return jsonify({"status":"error","message":"No file uploaded."})
-
-    img = Image.open(file.stream).convert("RGB")
-    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-
-    persons = detect_person(img_cv)
-    if not persons:
-        save_detection_report(current_user.id,"Upload","No Person")
-        return jsonify({"status":"no_person"})
-
-    cropped, bbox = persons[0]
-
-    processed_driver = preprocess_image(cropped)
-    pred_driver = driver_model.predict(processed_driver)[0]
-    driver_status = "alcoholic" if np.argmax(pred_driver)==0 else "safe"
-
-    processed_drunk = preprocess_image(cropped)
-    pred_drunk = drunk_model.predict(processed_drunk)[0]
-    drunk_status = "drunk" if np.argmax(pred_drunk)==0 else "sober"
-
-    save_detection_report(current_user.id,"Upload",f"Alcohol:{driver_status},Drunk:{drunk_status}")
-    return jsonify({"driver_status":driver_status,"drunk_status":drunk_status})
-
-# ========================= LIVE CAMERA DETECTION =========================
 @routes.route("/live_detect", methods=["POST"])
 @login_required
-def live_detect():
-    if not current_user.is_driver():
-        return jsonify({"status":"error","message":"Only drivers can detect."})
-
-    load_models()  # lazy load models
-    file = request.files.get("frame")
-    if not file:
-        return jsonify({"status":"error","message":"No frame uploaded."})
-
-    file_bytes = np.frombuffer(file.read(), np.uint8)
-    frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-    persons = detect_person(frame)
-    if not persons:
-        save_detection_report(current_user.id,"Live","No Person")
-        return jsonify({"status":"align_face"})
-
-    cropped, bbox = persons[0]
-
-    processed_driver = preprocess_image(cropped)
-    pred_driver = driver_model.predict(processed_driver)[0]
-    driver_status = "alcoholic" if np.argmax(pred_driver)==0 else "safe"
-
-    processed_drunk = preprocess_image(cropped)
-    pred_drunk = drunk_model.predict(processed_drunk)[0]
-    drunk_status = "drunk" if np.argmax(pred_drunk)==0 else "sober"
-
-    save_detection_report(current_user.id,"Live",f"Alcohol:{driver_status},Drunk:{drunk_status}")
-    return jsonify({"driver_status":driver_status,"drunk_status":drunk_status})
+def legacy_detection():
+    return jsonify({"status": "deprecated", "message": LEGACY_DETECTION_MESSAGE}), 410
 
 # ========================= DRIVER REPORTS JSON =========================
 @routes.route('/driver/reports_json')
