@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeDrive AI - Live Monitoring</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --primary: #4f46e5;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --muted: #9ca3af;
+    --mock: #7c3aed;
+    --bg-light: #f3f4f6;
+    --border: #e5e7eb;
+    --text-dark: #1f2937;
+    --text-light: #6b7280;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+[hidden] { display:none !important; }   /* component display rules must not override the hidden attribute */
+body { display:flex; min-height:100vh; background:var(--bg-light); color:var(--text-dark); }
+
+/* Sidebar (same pattern as the role dashboards) */
+.sidebar { width:250px; background:#fff; border-right:1px solid var(--border); padding:20px; display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar h2 { margin-bottom:30px; font-size:24px; color:var(--primary); }
+.sidebar a { display:flex; align-items:center; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; transition:background 0.2s; }
+.sidebar a:hover { background:var(--bg-light); }
+.sidebar a.active { background:var(--primary); color:#fff; }
+
+.main { flex:1; padding:20px 30px; overflow-y:auto; min-width:0; }
+
+/* Header */
+.header { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+.header h1 { font-size:24px; }
+.header h1 span { color:var(--text-light); font-weight:400; font-size:16px; margin-left:6px; }
+.pills { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.pill { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; font-size:13px; font-weight:600; background:#fff; border:1px solid var(--border); white-space:nowrap; }
+.pill .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); transition:background 0.3s; }
+.controls button { padding:8px 16px; border-radius:8px; border:none; cursor:pointer; font-weight:600; font-size:14px; margin-left:6px; }
+.controls .start { background:var(--primary); color:#fff; }
+.controls .stop { background:#e5e7eb; color:var(--text-dark); }
+.controls button:disabled { opacity:0.5; cursor:default; }
+
+/* Notices */
+.notice { display:flex; gap:10px; align-items:flex-start; padding:12px 16px; border-radius:12px; font-size:14px; margin-bottom:12px; line-height:1.45; }
+.notice.system { background:#fff; border:1px solid var(--border); color:var(--text-light); }
+.notice.mock { background:#f5f3ff; border:1px solid #ddd6fe; color:#4c1d95; font-weight:600; }
+.notice strong { color:inherit; }
+
+/* Layout */
+.grid { display:grid; grid-template-columns:minmax(0, 2fr) minmax(280px, 1fr); gap:20px; margin-bottom:20px; }
+.box { background:#fff; border-radius:15px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
+.box h3 { font-size:16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.box h3 small { font-size:12px; color:var(--text-light); font-weight:400; }
+.row3 { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr); gap:20px; margin-bottom:20px; }
+
+/* Video */
+.video-wrap { position:relative; background:#111827; border-radius:12px; overflow:hidden; aspect-ratio:16/9; }
+.video-wrap img { width:100%; height:100%; object-fit:contain; display:block; }
+.video-overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; background:rgba(17,24,39,0.82); color:#f9fafb; text-align:center; padding:20px; }
+.video-overlay .title { font-weight:700; font-size:18px; }
+.video-overlay .sub { font-size:14px; color:#d1d5db; max-width:420px; }
+.video-overlay[hidden] { display:none; }
+.video-caption { margin-top:10px; font-size:13px; color:var(--text-light); }
+
+/* Status cards */
+.status-list { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.stat { border:1px solid var(--border); border-left:4px solid var(--muted); border-radius:10px; padding:12px 14px; transition:border-color 0.3s; }
+.stat .label { font-size:12px; color:var(--text-light); text-transform:uppercase; letter-spacing:0.04em; }
+.stat .value { font-size:16px; font-weight:700; margin-top:4px; }
+.stat .detail { font-size:12px; color:var(--text-light); margin-top:2px; min-height:15px; overflow-wrap:anywhere; }
+
+/* Key/value lists */
+.kv { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:14px; }
+.kv dt { color:var(--text-light); }
+.kv dd { font-weight:600; text-align:right; overflow-wrap:break-word; min-width:0; }
+.mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; }
+
+/* Model output */
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; background:var(--bg-light); color:var(--text-light); }
+.badge.mock { background:#ede9fe; color:var(--mock); }
+.output-value { font-size:22px; font-weight:700; margin:6px 0 12px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.empty { color:var(--text-light); font-size:14px; line-height:1.5; }
+.bars { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+.bar { display:grid; grid-template-columns:110px 1fr 52px; gap:10px; align-items:center; font-size:13px; }
+.bar .track { height:8px; background:var(--bg-light); border-radius:999px; overflow:hidden; }
+.bar .fill { height:100%; background:var(--mock); width:0; transition:width 0.3s; }
+.bar .fill.real { background:var(--primary); }
+.subhead { font-size:12px; color:var(--text-light); text-transform:uppercase; letter-spacing:0.04em; margin-top:14px; }
+.message { font-size:13px; color:var(--text-light); margin-top:12px; overflow-wrap:anywhere; }
+
+/* History */
+.history { margin-top:20px; }
+.table-wrap { overflow-x:auto; }
+table.hist { width:100%; border-collapse:collapse; font-size:13px; }
+table.hist th { text-align:left; color:var(--text-light); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+table.hist td { padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+table.hist tbody tr { cursor:pointer; }
+table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-light); }
+.hist-actions { display:flex; gap:10px; align-items:center; }
+.hist-actions button { padding:6px 12px; border-radius:8px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:13px; font-weight:600; }
+.status-tag { font-weight:700; font-size:12px; }
+.status-tag.COMPLETED { color:var(--success); } .status-tag.RUNNING { color:var(--primary); } .status-tag.INTERRUPTED { color:var(--warning); }
+.persist { font-size:13px; margin-bottom:10px; }
+.persist.bad { color:var(--danger); }
+.events { margin-top:16px; border-top:1px solid var(--border); padding-top:14px; }
+.events h4 { font-size:14px; margin-bottom:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.events td.msg { white-space:normal; color:var(--text-light); max-width:420px; overflow-wrap:anywhere; }
+
+/* State colours */
+.s-ok { --state:var(--success); } .s-warn { --state:var(--warning); } .s-bad { --state:var(--danger); }
+.s-off { --state:var(--muted); } .s-mock { --state:var(--mock); } .s-info { --state:var(--primary); }
+.stat[class*="s-"] { border-left-color:var(--state); }
+.pill[class*="s-"] .dot { background:var(--state); }
+.stat[class*="s-"] .value { color:var(--state); }
+.stat.s-off .value { color:var(--text-light); }
+
+@media (max-width:1200px) { .row3 { grid-template-columns:1fr 1fr; } }
+@media (max-width:900px) {
+    body { flex-direction:column; }
+    .sidebar { width:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px; padding:12px; border-right:none; border-bottom:1px solid var(--border); }
+    .sidebar h2 { margin:0 12px 0 0; font-size:18px; }
+    .sidebar a { margin:0; padding:8px 10px; }
+    .main { padding:16px; }
+    .grid, .row3 { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>SafeDrive AI</h2>
+    <a href="{{ url_for('monitoring.dashboard') }}" class="active">Live Monitoring</a>
+    {% if current_user.is_admin() %}<a href="{{ url_for('routes.admin_dashboard') }}">Admin Dashboard</a>
+    {% elif current_user.is_chef() %}<a href="{{ url_for('routes.chef_dashboard') }}">Chef Dashboard</a>
+    {% else %}<a href="{{ url_for('routes.driver_dashboard') }}">Driver Dashboard</a>{% endif %}
+    <a href="{{ url_for('routes.logout') }}">Logout</a>
+</div>
+
+<div class="main">
+    <!-- A. Monitoring header -->
+    <div class="header">
+        <h1>SafeDrive AI <span>Live Monitoring · {{ username }}</span></h1>
+        <div class="pills">
+            <span class="pill" id="pill-status"><span class="dot"></span><span id="pill-status-text">CONNECTING…</span></span>
+            <span class="pill" id="pill-camera"><span class="dot"></span><span id="pill-camera-text">CAMERA —</span></span>
+            <span class="pill" id="pill-model"><span class="dot"></span><span id="pill-model-text">MODEL —</span></span>
+            <span class="controls">
+                <button class="start" id="btn-start" type="button">Start</button>
+                <button class="stop" id="btn-stop" type="button">Stop</button>
+            </span>
+        </div>
+    </div>
+
+    <div class="notice system" role="note"><span>ⓘ</span><span>{{ system_notice }}</span></div>
+    <div class="notice mock" id="mock-banner" hidden role="alert">
+        <span>⚠</span>
+        <span>MOCK / DEVELOPMENT ONLY. The active model produces synthetic output for software testing.
+              It is not an alcohol-impairment determination.</span>
+    </div>
+
+    <!-- B + C. Live camera and system status -->
+    <div class="grid">
+        <div class="box">
+            <h3>Live camera <small id="video-caption-right">overlay: detections from the pipeline</small></h3>
+            <div class="video-wrap">
+                <img id="video" alt="Live driver camera">
+                <div class="video-overlay" id="video-overlay">
+                    <div class="title" id="video-overlay-title">Monitoring stopped</div>
+                    <div class="sub" id="video-overlay-sub">Press Start to begin camera monitoring.</div>
+                </div>
+            </div>
+            <div class="video-caption" id="video-caption">Grey: persons · Blue: selected driver · Green: face</div>
+        </div>
+
+        <div class="box">
+            <h3>System status</h3>
+            <div class="status-list">
+                <div class="stat" id="st-camera"><div class="label">Camera</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-detectors"><div class="label">Detection models</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-driver"><div class="label">Driver</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-face"><div class="label">Face</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-features"><div class="label">Features</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-model"><div class="label">Impairment model</div><div class="value">—</div><div class="detail"></div></div>
+            </div>
+            <div class="message" id="status-message"></div>
+        </div>
+    </div>
+
+    <!-- Processing, features, model -->
+    <div class="row3">
+        <div class="box">
+            <h3>Processing</h3>
+            <dl class="kv">
+                <dt>Monitoring state</dt><dd class="mono" id="m-state">—</dd>
+                <dt>Processing FPS</dt><dd id="m-fps">—</dd>
+                <dt>Camera FPS</dt><dd id="m-camfps">—</dd>
+                <dt>Frame latency</dt><dd id="m-latency">—</dd>
+                <dt>Processing time</dt><dd id="m-proc">—</dd>
+                <dt>Frame ID</dt><dd class="mono" id="m-frame">—</dd>
+                <dt>Updated</dt><dd id="m-time">—</dd>
+            </dl>
+        </div>
+
+        <div class="box">
+            <h3>Phase 2 feature extraction</h3>
+            <dl class="kv">
+                <dt>Schema version</dt><dd id="f-schema">{{ feature_schema_version }}</dd>
+                <dt>Features</dt><dd>{{ feature_count }}</dd>
+                <dt>Status</dt><dd id="f-status">—</dd>
+                <dt>Extraction time</dt><dd id="f-time">—</dd>
+                <dt>Head pose</dt><dd id="f-g-head_pose">—</dd>
+                <dt>Gaze</dt><dd id="f-g-gaze">—</dd>
+                <dt>Appearance</dt><dd id="f-g-appearance">—</dd>
+                <dt>Facial motion</dt><dd id="f-g-facial_motion">—</dd>
+            </dl>
+            <div class="message" id="f-reason"></div>
+        </div>
+
+        <div class="box">
+            <h3>Model status <span class="badge" id="model-badge">—</span></h3>
+            <dl class="kv">
+                <dt>Provider</dt><dd class="mono" id="mo-provider">—</dd>
+                <dt>Name</dt><dd id="mo-name">—</dd>
+                <dt>Version</dt><dd class="mono" id="mo-version">—</dd>
+                <dt>Schema version</dt><dd id="mo-schema">—</dd>
+                <dt>Enabled</dt><dd id="mo-enabled">—</dd>
+                <dt>Development only</dt><dd id="mo-dev">—</dd>
+                <dt>Latest result</dt><dd class="mono" id="mo-result">—</dd>
+            </dl>
+            <div class="message" id="mo-notice"></div>
+        </div>
+    </div>
+
+    <!-- Latest model output -->
+    <div class="box">
+        <h3><span id="out-title">Latest model output</span> <span class="badge" id="out-badge" hidden>MOCK / DEVELOPMENT ONLY</span></h3>
+        <div id="out-empty" class="empty">—</div>
+        <div id="out-body" hidden>
+            <div class="subhead">Model output (<span class="mono" id="out-target">impairment_class</span>)</div>
+            <div class="output-value" id="out-prediction">—</div>
+            <dl class="kv" style="max-width:420px">
+                <dt>Provider</dt><dd class="mono" id="out-provider">—</dd>
+                <dt>Development only</dt><dd id="out-dev">—</dd>
+                <dt>Frame ID</dt><dd class="mono" id="out-frame">—</dd>
+            </dl>
+            <div id="out-probs-wrap">
+                <div class="subhead" id="out-probs-title">Probabilities</div>
+                <div class="bars" id="out-probs"></div>
+            </div>
+            <div class="message" id="out-note"></div>
+        </div>
+    </div>
+
+    <!-- Monitoring history (technical only) -->
+    <div class="box history">
+        <h3>Monitoring history
+            <span class="hist-actions"><small>technical statistics and events only</small>
+                <button type="button" id="hist-refresh">Refresh</button></span>
+        </h3>
+        <div class="persist" id="hist-persist"></div>
+        <div class="table-wrap">
+            <table class="hist">
+                <thead><tr>
+                    <th>Started</th><th>Ended</th><th>Duration</th><th>Frames</th><th>Avg FPS</th>
+                    <th>Avg latency</th><th>Model</th><th>Status</th><th>Events</th>
+                </tr></thead>
+                <tbody id="hist-body"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="events" id="hist-events" hidden>
+            <h4><span id="ev-title">Session events</span> <span class="badge mock" id="ev-mock" hidden>MOCK / DEVELOPMENT ONLY</span></h4>
+            <div class="table-wrap">
+                <table class="hist">
+                    <thead><tr><th>Time</th><th>Event</th><th>State</th><th>Frame</th><th>Model</th><th>Details</th></tr></thead>
+                    <tbody id="ev-body"></tbody>
+                </table>
+            </div>
+            <div class="message">Model events record only that a model ran or failed. Predicted classes and
+                probabilities are not stored.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+    const STATUS_POLL_MS = 1000, MODEL_POLL_MS = 5000;
+    const $ = id => document.getElementById(id);
+    const human = v => (v || "—").replace(/_/g, " ");
+    let modelInfo = null, statusBusy = false, videoActive = false;
+
+    function setState(el, cls) {
+        el.className = el.className.replace(/\bs-\w+\b/g, "").trim() + " " + cls;
+    }
+    function setStat(id, value, cls, detail) {
+        const el = $(id);
+        el.querySelector(".value").textContent = value;
+        el.querySelector(".detail").textContent = detail || "";
+        setState(el, cls);
+    }
+    function setPill(id, text, cls) { $(id + "-text").textContent = text; setState($(id), cls); }
+    const fmt = (v, unit, digits = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(digits) + (unit || "");
+
+    const MONITORING_CLASS = {
+        MONITORING_READY: "s-ok", FEATURES_UNAVAILABLE: "s-warn", FACE_NOT_DETECTED: "s-warn",
+        NO_DRIVER: "s-warn", MODEL_UNAVAILABLE: "s-bad", CAMERA_UNAVAILABLE: "s-bad", STOPPED: "s-off",
+    };
+    // Clarifies, never changes, a backend state: MODEL_UNAVAILABLE refers to the person/face detectors.
+    const MONITORING_LABEL = { MODEL_UNAVAILABLE: "DETECTION MODELS UNAVAILABLE" };
+    const CAMERA_CLASS = { CONNECTED: "s-ok", CONNECTING: "s-warn", UNAVAILABLE: "s-bad", STOPPED: "s-off" };
+    const DETECTOR_CLASS = { READY: "s-ok", LOADING: "s-warn", NOT_LOADED: "s-off", UNAVAILABLE: "s-bad" };
+
+    // ---------------------------------------------------------------- model descriptor
+    function modelState(latest) {
+        if (!modelInfo) return { text: "—", cls: "s-off" };
+        if (!modelInfo.enabled) return { text: "DISABLED", cls: "s-off" };
+        if (!modelInfo.available) return { text: "UNAVAILABLE", cls: "s-bad" };
+        if (latest && latest.status === "MODEL_ERROR") return { text: "ERROR", cls: "s-bad" };
+        if (modelInfo.model && modelInfo.model.is_mock) return { text: "MOCK", cls: "s-mock" };
+        return { text: "ENABLED", cls: "s-info" };
+    }
+
+    function renderModel(latest) {
+        const st = modelState(latest);
+        const m = modelInfo && modelInfo.model;
+        const isMock = !!(m && m.is_mock);
+        let pill = "MODEL: " + (modelInfo && modelInfo.enabled ? (m.provider || "").toUpperCase() : "DISABLED");
+        if (isMock) pill += " · DEVELOPMENT ONLY";
+        if (st.text === "UNAVAILABLE" || st.text === "ERROR") pill += " · " + st.text;
+        setPill("pill-model", pill, st.cls);
+        $("mock-banner").hidden = !isMock;
+
+        let detail = "";
+        if (st.text === "DISABLED") detail = "Monitoring continues normally.";
+        else if (st.text === "UNAVAILABLE" || st.text === "ERROR") detail = "Monitoring pipeline still running.";
+        else if (isMock) detail = "Synthetic output";
+        setStat("st-model", st.text, st.cls, detail);
+
+        const badge = $("model-badge");
+        badge.textContent = isMock ? "DEVELOPMENT ONLY" : st.text;
+        badge.className = "badge" + (isMock ? " mock" : "");
+
+        $("mo-provider").textContent = m ? (m.provider || "—").toUpperCase() : "NONE";
+        $("mo-name").textContent = m ? m.name : "—";
+        $("mo-version").textContent = m ? m.version : "—";
+        $("mo-schema").textContent = m ? m.schema_version : "—";
+        $("mo-enabled").textContent = modelInfo ? (modelInfo.enabled ? "Yes" : "No") : "—";
+        $("mo-dev").textContent = m ? (m.development_only ? "YES" : "No") : "—";
+        $("mo-result").textContent = latest ? human(latest.status) : "—";
+
+        let notice = "";
+        if (!modelInfo) notice = "";
+        else if (!modelInfo.enabled) notice = "No impairment model is currently enabled. Monitoring continues normally.";
+        else if (!modelInfo.available) notice = "The configured model could not be loaded. The monitoring pipeline is still running.";
+        else if (latest && latest.status === "MODEL_ERROR") notice = "The model returned an error (" + (latest.error || "unknown") + "). The monitoring pipeline is still running.";
+        else if (isMock) notice = "Synthetic output for software testing. Not an alcohol-impairment determination.";
+        $("mo-notice").textContent = notice;
+    }
+
+    function renderOutput(snap) {
+        const latest = snap ? snap.impairment : null;
+        const m = modelInfo && modelInfo.model;
+        const dev = latest ? latest.development_only : !!(m && m.development_only);
+        const isMock = latest ? latest.is_mock : !!(m && m.is_mock);
+        $("out-title").textContent = dev ? "Latest development output" : "Latest model output";
+        $("out-badge").hidden = !isMock;
+
+        const valid = latest && latest.valid;
+        $("out-body").hidden = !valid;
+        $("out-empty").hidden = !!valid;
+        if (!valid) {
+            let text;
+            if (!modelInfo || !modelInfo.enabled) text = "No impairment model is currently enabled. Monitoring continues normally.";
+            else if (!modelInfo.available) text = "Model unavailable. The monitoring pipeline is still running.";
+            else if (latest) text = "No output: " + human(latest.status) + (latest.error ? " — " + latest.error : "");
+            else if (!snap || !snap.running) text = "Monitoring is stopped.";
+            else text = "No output for the current frame. The model runs only when Phase 2 features are available.";
+            $("out-empty").textContent = text;
+            return;
+        }
+        $("out-target").textContent = latest.target || "impairment_class";
+        $("out-prediction").textContent = latest.prediction;
+        $("out-provider").textContent = (latest.model_provider || "—").toUpperCase();
+        $("out-dev").textContent = latest.development_only ? "YES" : "No";
+        $("out-frame").textContent = latest.frame_id ?? "—";
+        $("out-note").textContent = latest.note || "";
+
+        const probs = latest.probabilities;
+        $("out-probs-wrap").hidden = !probs;
+        if (probs) {
+            $("out-probs-title").textContent = isMock ? "Synthetic probabilities (mock, not meaningful)" : "Class probabilities (model output)";
+            const wrap = $("out-probs");
+            wrap.replaceChildren(...Object.entries(probs).map(([cls, p]) => {
+                const row = document.createElement("div"); row.className = "bar";
+                const name = document.createElement("span"); name.className = "mono"; name.textContent = cls;
+                const track = document.createElement("div"); track.className = "track";
+                const fill = document.createElement("div"); fill.className = "fill" + (isMock ? "" : " real");
+                fill.style.width = Math.max(0, Math.min(100, p * 100)).toFixed(1) + "%";
+                track.appendChild(fill);
+                const val = document.createElement("span"); val.textContent = (p * 100).toFixed(1) + "%";
+                row.append(name, track, val);
+                return row;
+            }));
+        }
+    }
+
+    // ---------------------------------------------------------------- status
+    function renderStatus(s) {
+        const running = s.running;
+        setPill("pill-status", running ? (MONITORING_LABEL[s.status] || human(s.status)) : "STOPPED",
+                running ? (MONITORING_CLASS[s.status] || "s-off") : "s-off");
+        setPill("pill-camera", "CAMERA " + human(s.camera_status), CAMERA_CLASS[s.camera_status] || "s-off");
+        $("btn-start").disabled = running; $("btn-stop").disabled = !running;
+
+        const connected = s.camera_status === "CONNECTED";
+        setStat("st-camera", human(s.camera_status), CAMERA_CLASS[s.camera_status] || "s-off",
+                connected && s.frame_size ? s.frame_size[0] + "×" + s.frame_size[1] : "");
+        setStat("st-detectors", human(s.model_status), DETECTOR_CLASS[s.model_status] || "s-off", "person + face");
+
+        // Driver / face / features are only meaningful once frames are being analysed.
+        const analysing = running && s.camera_status === "CONNECTED" && s.model_status === "READY";
+        if (!analysing) {
+            ["st-driver", "st-face", "st-features"].forEach(id => setStat(id, "N/A", "s-off", "not analysing"));
+        } else {
+            setStat("st-driver", s.driver_detected ? "DETECTED" : "NOT DETECTED", s.driver_detected ? "s-ok" : "s-warn",
+                    s.driver_detected && s.driver_confidence !== null ? "confidence " + fmt(s.driver_confidence, "", 2) : "");
+            if (!s.driver_detected) setStat("st-face", "N/A", "s-off", "no driver");
+            else setStat("st-face", s.face_detected ? "DETECTED" : "NOT DETECTED", s.face_detected ? "s-ok" : "s-warn", "");
+            if (!s.face_detected) setStat("st-features", "N/A", "s-off", "no face");
+            else {
+                const okF = s.features_status === "FEATURES_AVAILABLE";
+                setStat("st-features", okF ? "AVAILABLE" : "UNAVAILABLE", okF ? "s-ok" : "s-warn", "schema v{{ feature_schema_version }}");
+            }
+        }
+        $("status-message").textContent = s.message || "";
+
+        // Processing
+        $("m-state").textContent = running ? s.status : "STOPPED";
+        $("m-fps").textContent = fmt(s.fps);
+        $("m-camfps").textContent = fmt(s.camera_fps);
+        $("m-latency").textContent = fmt(s.frame_latency, " ms", 0);
+        $("m-proc").textContent = fmt(s.processing_time, " ms", 0);
+        $("m-frame").textContent = s.frame_id ?? "—";
+        $("m-time").textContent = s.timestamp ? new Date(s.timestamp * 1000).toLocaleTimeString() : "—";
+
+        // Feature extraction
+        const f = s.features;
+        const fAvail = s.features_status === "FEATURES_AVAILABLE";
+        $("f-status").textContent = f ? (fAvail ? "AVAILABLE" : "UNAVAILABLE") : (analysing ? "UNAVAILABLE" : "—");
+        $("f-time").textContent = fmt(s.feature_time, " ms", 1);
+        ["head_pose", "gaze", "appearance", "facial_motion"].forEach(g => {
+            $("f-g-" + g).textContent = f ? (f[g] && f[g].valid ? "valid" : "missing") : "—";
+        });
+        $("f-reason").textContent = f && !fAvail && f.reason ? "Reason: " + f.reason : "";
+
+        // Video overlay: never blame the camera for model problems.
+        let title = "", sub = "";
+        if (!running) { title = "Monitoring stopped"; sub = "Press Start to begin camera monitoring."; }
+        else if (s.camera_status === "CONNECTING") { title = "Connecting to camera…"; sub = s.message || ""; }
+        else if (s.camera_status !== "CONNECTED") { title = "Camera unavailable"; sub = s.message || "Retrying automatically."; }
+        else if (!s.frame_id) { title = "Waiting for frames…"; sub = s.message || ""; }
+        $("video-overlay").hidden = !title;
+        $("video-overlay-title").textContent = title;
+        $("video-overlay-sub").textContent = sub;
+        setVideo(running);
+    }
+
+    const VIDEO_RETRY_MS = 5000;
+    let videoErrorAt = 0;
+    function setVideo(on) {
+        if (on && !videoActive && Date.now() - videoErrorAt > VIDEO_RETRY_MS) {
+            $("video").src = "{{ url_for('monitoring.video') }}?t=" + Date.now(); videoActive = true;
+        }
+        if (!on && videoActive) { $("video").removeAttribute("src"); videoActive = false; }
+    }
+    // Stream dropped (server restart, network): retry on a later poll, at most every VIDEO_RETRY_MS.
+    $("video").addEventListener("error", () => { if (videoActive) { videoActive = false; videoErrorAt = Date.now(); } });
+
+    // ---------------------------------------------------------------- polling
+    async function getJSON(url) {
+        const res = await fetch(url, { headers: { "Accept": "application/json" }, cache: "no-store" });
+        if (res.redirected || !res.ok) throw new Error(res.status === 200 ? "session expired" : "HTTP " + res.status);
+        return res.json();
+    }
+    async function pollModel() {
+        try { modelInfo = await getJSON("{{ url_for('monitoring.model') }}"); } catch (e) { /* keep last */ }
+    }
+    async function pollStatus() {
+        if (statusBusy || document.hidden) return;
+        statusBusy = true;
+        try {
+            const s = await getJSON("{{ url_for('monitoring.status') }}");
+            renderStatus(s); renderModel(s.impairment); renderOutput(s);
+        } catch (e) {
+            setPill("pill-status", "API UNREACHABLE", "s-bad");
+            $("status-message").textContent = "Cannot reach /monitoring/status (" + e.message + ").";
+        } finally { statusBusy = false; }
+    }
+    async function control(action) {
+        $("btn-start").disabled = $("btn-stop").disabled = true;
+        try { await fetch("{{ url_for('monitoring.dashboard') }}" + action, { method: "POST" }); } catch (e) {}
+        await pollModel(); await pollStatus();
+    }
+    $("btn-start").addEventListener("click", () => control("start"));
+    $("btn-stop").addEventListener("click", () => control("stop").then(() => setTimeout(loadHistory, 1500)));
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) pollStatus(); });
+
+    // ---------------------------------------------------------------- history
+    const HISTORY_POLL_MS = 15000;
+    const HISTORY_URL = "{{ url_for('monitoring.history') }}";
+    let selectedSession = null;
+    const localTime = iso => iso ? new Date(iso).toLocaleString(undefined,
+        { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
+    const clockTime = iso => iso ? new Date(iso).toLocaleTimeString() : "—";
+    function duration(sec) {
+        if (sec === null || sec === undefined) return "—";
+        const s = Math.round(sec), m = Math.floor(s / 60);
+        return m ? `${m}m ${s % 60}s` : `${s}s`;
+    }
+    function cell(text, cls) {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = text ?? "—";
+        return td;
+    }
+    function modelCell(provider, devOnly) {
+        const td = cell((provider || "none").toUpperCase());
+        if (devOnly) {
+            const b = document.createElement("span");
+            b.className = "badge mock"; b.style.marginLeft = "6px"; b.textContent = "MOCK / DEVELOPMENT ONLY";
+            td.appendChild(b);
+        }
+        return td;
+    }
+    async function loadHistory() {
+        let data, failed = false;
+        try {
+            const res = await fetch(HISTORY_URL + "?limit=20", { cache: "no-store" });
+            data = await res.json();
+            failed = !res.ok;
+        } catch (e) { data = null; failed = true; }
+        const persist = $("hist-persist");
+        const p = data && data.persistence;
+        if (failed) {
+            persist.className = "persist bad";
+            persist.textContent = "History is unavailable (database not reachable). Live monitoring is not affected.";
+        } else if (p && p.database_ok === false) {
+            persist.className = "persist bad";
+            persist.textContent = "History is currently not being saved (" + p.pending_events + " event(s) waiting). Live monitoring is not affected.";
+        } else { persist.className = "persist"; persist.textContent = ""; }
+
+        const body = $("hist-body");
+        const sessions = (data && data.sessions) || [];
+        if (!sessions.length) {
+            const tr = document.createElement("tr"); const td = cell(failed ? "—" : "No monitoring sessions recorded yet.", "empty");
+            td.colSpan = 9; tr.appendChild(td); body.replaceChildren(tr); return;
+        }
+        body.replaceChildren(...sessions.map(s => {
+            const tr = document.createElement("tr");
+            if (s.id === selectedSession) tr.className = "selected";
+            tr.append(cell(localTime(s.started_at)), cell(s.ended_at ? clockTime(s.ended_at) : (s.status === "RUNNING" ? "running" : "—")),
+                      cell(duration(s.duration_seconds)), cell(s.frames_processed),
+                      cell(s.average_processing_fps !== null ? Number(s.average_processing_fps).toFixed(1) : "—"),
+                      cell(s.average_latency_ms !== null ? Math.round(s.average_latency_ms) + " ms" : "—"),
+                      modelCell(s.model_provider, s.model_development_only),
+                      cell(s.status, "status-tag " + s.status), cell(s.event_count));
+            tr.addEventListener("click", () => { selectedSession = s.id; loadSession(s.id); loadHistory(); });
+            return tr;
+        }));
+    }
+    async function loadSession(id) {
+        const panel = $("hist-events");
+        panel.hidden = false;
+        $("ev-title").textContent = "Session events";
+        try {
+            const res = await fetch(HISTORY_URL + "/" + encodeURIComponent(id), { cache: "no-store" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+            const s = data.session;
+            $("ev-title").textContent = `Session events · ${localTime(s.started_at)} · ${s.status}`;
+            $("ev-mock").hidden = !s.model_development_only;
+            $("ev-body").replaceChildren(...data.events.map(e => {
+                const tr = document.createElement("tr");
+                tr.append(cell(new Date(e.timestamp).toLocaleTimeString()), cell(e.event_type, "mono"),
+                          cell(e.status, "mono"), cell(e.frame_id),
+                          modelCell(e.model_provider, e.development_only), cell(e.error_message || "", "msg"));
+                return tr;
+            }));
+        } catch (e) {
+            const tr = document.createElement("tr"); const td = cell("Could not load events: " + e.message, "msg");
+            td.colSpan = 6; tr.appendChild(td); $("ev-body").replaceChildren(tr);
+        }
+    }
+    $("hist-refresh").addEventListener("click", () => { loadHistory(); if (selectedSession) loadSession(selectedSession); });
+
+    pollModel().then(pollStatus);
+    loadHistory();
+    setInterval(pollStatus, STATUS_POLL_MS);
+    setInterval(pollModel, MODEL_POLL_MS);
+    setInterval(() => { if (!document.hidden) loadHistory(); }, HISTORY_POLL_MS);
+})();
+</script>
+</body>
+</html>

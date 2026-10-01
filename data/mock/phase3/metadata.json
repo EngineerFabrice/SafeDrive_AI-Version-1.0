@@ -1,0 +1,64 @@
+{
+  "DATASET_TYPE": "MOCK",
+  "NOT_FOR_RESEARCH_CLAIMS": true,
+  "name": "safedrive-phase3-mock",
+  "description": "Synthetic random feature vectors for development and testing only. No real people, faces or measurements. Targets and the artificial per-level shift are arbitrary and carry no meaning about alcohol or impairment.",
+  "feature_schema_version": 1,
+  "feature_names": [
+    "head_pose.pitch",
+    "head_pose.yaw",
+    "head_pose.roll",
+    "head_pose.yaw_ratio",
+    "head_pose.pitch_ratio",
+    "head_pose.roll_2d",
+    "head_pose.reprojection_error",
+    "head_pose.confidence",
+    "gaze.horizontal",
+    "gaze.vertical",
+    "gaze.horizontal_left",
+    "gaze.horizontal_right",
+    "gaze.eye_disagreement",
+    "gaze.eye_contrast",
+    "appearance.skin_a",
+    "appearance.skin_red_ratio",
+    "appearance.eye_region_a_rel",
+    "appearance.brightness",
+    "appearance.contrast",
+    "appearance.sharpness",
+    "facial_motion.face_speed",
+    "facial_motion.face_dx",
+    "facial_motion.face_dy",
+    "facial_motion.scale_change",
+    "facial_motion.landmark_speed",
+    "facial_motion.landmark_deformation",
+    "facial_motion.pitch_rate",
+    "facial_motion.yaw_rate",
+    "facial_motion.roll_rate"
+  ],
+  "target_name": "impairment_class",
+  "classes": [
+    "MOCK_LEVEL_0",
+    "MOCK_LEVEL_1",
+    "MOCK_LEVEL_2"
+  ],
+  "class_definitions": {
+    "MOCK_LEVEL_0": "Synthetic label 0; no real-world meaning.",
+    "MOCK_LEVEL_1": "Synthetic label 1; no real-world meaning.",
+    "MOCK_LEVEL_2": "Synthetic label 2; no real-world meaning."
+  },
+  "bac": "not applicable (empty) in the mock dataset",
+  "generator": {
+    "function": "engine.datasets.mock_provider.generate_mock_dataset",
+    "seed": 20261001,
+    "n_subjects": 8,
+    "sessions_per_subject": 3,
+    "frames_per_session": 30,
+    "fps": 30.0,
+    "artificial_shift_std_units_per_level": {
+      "head_pose.pitch": 0.6,
+      "gaze.horizontal": -0.5,
+      "facial_motion.landmark_speed": 0.7
+    }
+  },
+  "rows": 720
+}

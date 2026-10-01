@@ -2,6 +2,7 @@
 from flask import Flask
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, UserMixin
+import os
 import pymysql
 
 # -------------------- Flask Extensions --------------------
@@ -35,14 +36,20 @@ class User(UserMixin):
         return f"<User {self.username} ({self.role})>"
 
 # -------------------- Database Connection --------------------
-def get_connection():
-    """Return a PyMySQL connection to the safedrive_ai database"""
+def get_connection(connect_timeout=10):
+    """Return a PyMySQL connection to the safedrive_ai database.
+
+    Settings can be overridden with environment variables (SAFEDRIVE_DB_HOST,
+    SAFEDRIVE_DB_PORT, SAFEDRIVE_DB_USER, SAFEDRIVE_DB_PASSWORD, SAFEDRIVE_DB_NAME);
+    the defaults below are the project's original local settings.
+    """
     return pymysql.connect(
-        host='localhost',
-        user='root',          # MySQL user
-        password='',          # MySQL password (empty for no password)
-        database='safedrive_ai',
-        port=3307,             # <-- specify your custom port
+        host=os.environ.get('SAFEDRIVE_DB_HOST', 'localhost'),
+        user=os.environ.get('SAFEDRIVE_DB_USER', 'root'),
+        password=os.environ.get('SAFEDRIVE_DB_PASSWORD', ''),
+        database=os.environ.get('SAFEDRIVE_DB_NAME', 'safedrive_ai'),
+        port=int(os.environ.get('SAFEDRIVE_DB_PORT', '3307')),
+        connect_timeout=connect_timeout,
         cursorclass=pymysql.cursors.DictCursor
     )
 

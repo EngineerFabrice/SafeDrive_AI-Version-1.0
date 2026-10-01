@@ -1,17 +1,11 @@
-from website import create_app
+from website import create_app, get_connection
 import pymysql
 
 app = create_app()
 
-# Optional: test database connection at startup
+# Optional: test database connection at startup (same settings as the app)
 try:
-    conn = pymysql.connect(
-        host='localhost',
-        user='root',
-        password='',
-        database='safedrive_ai',
-        port=3307
-    )
+    conn = get_connection(connect_timeout=5)
     conn.close()
     print("[INFO] MySQL connection successful!")
 except pymysql.err.OperationalError as e:

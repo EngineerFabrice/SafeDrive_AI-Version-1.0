@@ -84,6 +84,7 @@ class MonitoringSnapshot:
     processing_time: Optional[float] = None  # ms spent in detection for the last frame
     timestamp: float = 0.0                 # wall-clock time (epoch seconds) of this snapshot
     frame_id: Optional[int] = None
+    frames_processed: int = 0              # frames fully analysed since the last start()
     frame_size: Optional[Tuple[int, int]] = None  # (width, height)
     driver_bbox: Optional[BBox] = None
     driver_confidence: Optional[float] = None
@@ -91,6 +92,10 @@ class MonitoringSnapshot:
     features_status: FeatureStatus = FeatureStatus.FEATURES_UNAVAILABLE
     features: Optional[dict] = None        # JSON-safe FaceFeatures.to_dict() of the last frame
     feature_time: Optional[float] = None   # ms spent extracting features for the last frame
+    # Phase 3 model output for the last frame (ImpairmentResult.to_dict()). Informational
+    # only: it never changes `status`, and a mock model is flagged development_only.
+    impairment: Optional[dict] = None
+    impairment_model: Optional[dict] = None  # ModelInfo of the configured model; None = disabled
     message: str = ""
 
     def to_dict(self) -> dict:

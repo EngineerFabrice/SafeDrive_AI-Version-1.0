@@ -1,7 +1,10 @@
 """Real-time monitoring pipeline.
 
 camera frame -> person detection -> driver ROI -> face detection
-             -> feature extraction -> state
+             -> feature extraction -> [optional impairment model] -> state
+
+The impairment model is injected (see engine.impairment.create_impairment_model);
+the pipeline never chooses a concrete model itself.
 
 Runs in its own thread and publishes a ``MonitoringSnapshot`` after every
 frame (or every wait timeout when the camera delivers nothing). It has no
@@ -23,6 +26,7 @@ from .detectors.driver_roi import DriverROI, DriverROIConfig, DriverROISelector
 from .detectors.face import FaceDetection, FaceDetector, FaceDetectorConfig
 from .detectors.person import PersonDetection, PersonDetector, PersonDetectorConfig
 from .features import FaceFeatures, FeatureExtractor, FeatureExtractorConfig
+from .impairment import ImpairmentInput, ImpairmentModel, ImpairmentResult, ImpairmentStatus
 from .state import (CameraStatus, FeatureStatus, ModelStatus, MonitoringSnapshot,
                     MonitoringState, MonitoringStatus, resolve_status)
 
@@ -46,6 +50,7 @@ class FrameAnalysis:
     face: Optional[FaceDetection]
     features: Optional[FaceFeatures]  # None when no face was found
     processing_time: float  # ms, all stages including feature extraction
+    impairment: Optional[ImpairmentResult] = None  # None: no model, or features unavailable
 
 
 class MonitoringPipeline:
@@ -54,7 +59,8 @@ class MonitoringPipeline:
                  roi_selector: Optional[DriverROISelector] = None,
                  face_detector: Optional[FaceDetector] = None,
                  feature_extractor: Optional[FeatureExtractor] = None,
-                 state: Optional[MonitoringState] = None):
+                 state: Optional[MonitoringState] = None,
+                 impairment_model: Optional[ImpairmentModel] = None):
         self.config = config or PipelineConfig()
         self.camera = camera or Camera(self.config.camera)
         self.person_detector = person_detector or PersonDetector(self.config.person)
@@ -63,12 +69,15 @@ class MonitoringPipeline:
         # One YuNet instance serves both face detection and Haar-fallback landmarking.
         self.feature_extractor = feature_extractor or FeatureExtractor(
             self.config.features, landmark_detector=self.face_detector.landmark_detector)
+        self.impairment_model = impairment_model
         self.state = state or MonitoringState()
+        self.state.update(impairment_model=impairment_model.info.to_dict() if impairment_model else None)
         self._fps = FpsMeter()
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._latest: Optional[Tuple[Frame, FrameAnalysis]] = None
         self._last_feature_error_log = 0.0
+        self._frames_processed = 0
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
@@ -76,6 +85,8 @@ class MonitoringPipeline:
             return
         self._stop_event.clear()
         self._fps.reset()
+        self._frames_processed = 0
+        self.state.update(frames_processed=0)
         self.roi_selector.reset()
         self.feature_extractor.reset()
         self.camera.start()
@@ -94,7 +105,8 @@ class MonitoringPipeline:
                           face_detected=False, fps=0.0, camera_fps=0.0, frame_latency=None,
                           processing_time=None, driver_bbox=None, driver_confidence=None,
                           face_bbox=None, features_status=FeatureStatus.FEATURES_UNAVAILABLE,
-                          features=None, feature_time=None, message="Monitoring stopped")
+                          features=None, feature_time=None, impairment=None,
+                          message="Monitoring stopped")
 
     @property
     def is_running(self) -> bool:
@@ -136,8 +148,21 @@ class MonitoringPipeline:
         else:
             features = None
             self.feature_extractor.reset()  # no motion measured across a lost face
+        impairment = self._predict_impairment(features)
         return FrameAnalysis(persons=persons, driver=driver, face=face, features=features,
-                             processing_time=(time.perf_counter() - t0) * 1000)
+                             processing_time=(time.perf_counter() - t0) * 1000,
+                             impairment=impairment)
+
+    def _predict_impairment(self, features: Optional[FaceFeatures]) -> Optional[ImpairmentResult]:
+        """Run the configured model on available features only; never raises."""
+        if self.impairment_model is None or features is None or not features.valid:
+            return None
+        try:
+            return self.impairment_model.predict(ImpairmentInput.from_features(features))
+        except Exception as exc:  # predict() already guards model code; this guards the interface
+            log.exception("Impairment model call failed")
+            return ImpairmentResult(status=ImpairmentStatus.MODEL_ERROR, model=self.impairment_model.info,
+                                    error=f"{type(exc).__name__}: {exc}")
 
     def _extract_features(self, image: np.ndarray, face: FaceDetection, captured_at: float,
                           frame_id: Optional[int]) -> FaceFeatures:
@@ -199,6 +224,7 @@ class MonitoringPipeline:
                 continue
 
             self._fps.tick()
+            self._frames_processed += 1
             self._latest = (frame, analysis)
             self._publish(camera_status, model_status, frame, analysis, "")
 
@@ -220,6 +246,7 @@ class MonitoringPipeline:
             driver_detected=driver is not None,
             face_detected=face is not None,
             fps=round(self._fps.fps, 2),
+            frames_processed=self._frames_processed,
             camera_fps=round(self.camera.fps, 2),
             frame_latency=round(latency, 1) if latency is not None else None,
             processing_time=round(analysis.processing_time, 1) if analysis else None,
@@ -232,6 +259,7 @@ class MonitoringPipeline:
                              else FeatureStatus.FEATURES_UNAVAILABLE),
             features=features.to_dict() if features is not None else None,
             feature_time=round(features.processing_time, 2) if features is not None else None,
+            impairment=analysis.impairment.to_dict() if analysis and analysis.impairment else None,
             message=message,
         )
 
@@ -268,16 +296,21 @@ def draw_overlay(image: np.ndarray, analysis: Optional[FrameAnalysis],
 def _main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="SafeDrive AI Phase 1 monitoring engine")
+    from .impairment import create_impairment_model
+
+    parser = argparse.ArgumentParser(description="SafeDrive AI monitoring engine")
     parser.add_argument("--source", default="0", help="camera index or video path")
     parser.add_argument("--weights", default="yolov8n.pt")
     parser.add_argument("--preview", action="store_true", help="show annotated OpenCV window")
+    parser.add_argument("--model-provider", default=None,
+                        help="impairment model provider (default: $MODEL_PROVIDER, else none)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     source = int(args.source) if args.source.isdigit() else args.source
     pipeline = MonitoringPipeline(PipelineConfig(camera=CameraConfig(source=source),
-                                                 person=PersonDetectorConfig(weights=args.weights)))
+                                                 person=PersonDetectorConfig(weights=args.weights)),
+                                  impairment_model=create_impairment_model(args.model_provider))
     pipeline.start()
     try:
         if args.preview:

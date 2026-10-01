@@ -1,0 +1,74 @@
+# website/migrate.py
+"""Minimal, non-destructive SQL migrations for the MySQL database.
+
+Applies `website/migrations/NNNN_*.sql` files in order, once each, and records
+them in a `schema_migrations` table. Migration files must be additive (CREATE
+TABLE IF NOT EXISTS, ADD COLUMN, ...); this tool never drops or resets anything.
+
+    python -m website.migrate            # apply pending migrations
+    python -m website.migrate --status   # list applied / pending
+
+Uses the same connection settings as the app (see website.get_connection).
+"""
+import argparse
+import glob
+import os
+import re
+
+from . import get_connection
+
+MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations")
+
+_TRACKING_TABLE = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     VARCHAR(100) NOT NULL PRIMARY KEY,
+    applied_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"""
+
+
+def _statements(sql):
+    sql = re.sub(r"--[^\n]*", "", sql)              # strip line comments
+    return [s.strip() for s in sql.split(";") if s.strip()]
+
+
+def migration_files():
+    return sorted(glob.glob(os.path.join(MIGRATIONS_DIR, "[0-9][0-9][0-9][0-9]_*.sql")))
+
+
+def applied_versions(cursor):
+    cursor.execute(_TRACKING_TABLE)
+    cursor.execute("SELECT version FROM schema_migrations")
+    return {row["version"] for row in cursor.fetchall()}
+
+
+def migrate(dry_run=False):
+    """Apply pending migrations; returns the list of versions applied (or pending if dry_run)."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        done = applied_versions(cursor)
+        pending = [f for f in migration_files() if os.path.basename(f) not in done]
+        if dry_run:
+            return [os.path.basename(f) for f in pending]
+        applied = []
+        for path in pending:
+            version = os.path.basename(path)
+            with open(path, encoding="utf-8") as fh:
+                for statement in _statements(fh.read()):
+                    cursor.execute(statement)
+            cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (version,))
+            conn.commit()
+            applied.append(version)
+        return applied
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Apply SafeDrive AI database migrations")
+    parser.add_argument("--status", action="store_true", help="only list pending migrations")
+    args = parser.parse_args()
+    result = migrate(dry_run=args.status)
+    label = "pending" if args.status else "applied"
+    print(f"{label}: {', '.join(result) if result else 'none'}")
