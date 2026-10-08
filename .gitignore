@@ -37,3 +37,6 @@ instance/backups/
 instance/dev_outbox/
 # Development-only Flask secret (generated locally; production must set SAFEDRIVE_SECRET_KEY)
 instance/.dev_secret_key
+
+.venv/
+.env
