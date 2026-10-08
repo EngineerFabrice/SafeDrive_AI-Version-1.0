@@ -1,11 +1,12 @@
 """Select the impairment model from configuration (``MODEL_PROVIDER``).
 
-    MODEL_PROVIDER=none   (default) no model; the live pipeline runs without predictions
-    MODEL_PROVIDER=mock   MockImpairmentModel (DEVELOPMENT_ONLY)
+    MODEL_PROVIDER=alcohol_mobilenetv3  (default) MobileNetV3 face classifier trained by
+                                        training/train_mobilenet.py (ALCOHOL_MODEL_PATH overrides the file)
+    MODEL_PROVIDER=mock                 MockImpairmentModel (DEVELOPMENT_ONLY; never feeds safety decisions)
+    MODEL_PROVIDER=none                 no model; the live pipeline runs without predictions
 
-A future real model is added by registering one more provider here (for
-example ``artifact``, loading a validated model file). Nothing else in the
-application changes.
+A missing artefact or a failing provider yields an UnavailableImpairmentModel,
+so monitoring keeps running and reports the model as unavailable.
 """
 
 import logging
@@ -25,9 +26,16 @@ def _mock(provider: str) -> ImpairmentModel:
     return MockImpairmentModel(provider=provider)
 
 
+def _alcohol_mobilenetv3(provider: str) -> ImpairmentModel:
+    from .alcohol_model import AlcoholImageModel
+    return AlcoholImageModel(provider=provider)
+
+
+DEFAULT_PROVIDER = "alcohol_mobilenetv3"
+
 PROVIDERS: Dict[str, Callable[[str], ImpairmentModel]] = {
     "mock": _mock,
-    # "artifact": lambda p: ArtifactImpairmentModel(os.environ["MODEL_PATH"], provider=p),  # future
+    "alcohol_mobilenetv3": _alcohol_mobilenetv3,
 }
 
 
@@ -37,7 +45,7 @@ def create_impairment_model(provider: Optional[str] = None) -> Optional[Impairme
     Never raises for configuration problems: an unknown or failing provider
     yields an UnavailableImpairmentModel so the live pipeline keeps running.
     """
-    name = (os.environ.get(ENV_VAR, "none") if provider is None else provider).strip().lower()
+    name = (os.environ.get(ENV_VAR, DEFAULT_PROVIDER) if provider is None else provider).strip().lower()
     if name in DISABLED:
         return None
     factory = PROVIDERS.get(name)
@@ -50,6 +58,9 @@ def create_impairment_model(provider: Optional[str] = None) -> Optional[Impairme
     except Exception as exc:
         log.exception("Impairment model provider %r failed to load", name)
         return UnavailableImpairmentModel(name, f"{type(exc).__name__}: {exc}")
-    if model.info.development_only:
-        log.warning("Impairment model %s is DEVELOPMENT_ONLY; its output is synthetic", model.info.name)
+    if model.info.is_mock:
+        log.warning("Impairment model %s is a MOCK; its output is synthetic", model.info.name)
+    elif model.info.development_only:
+        log.warning("Impairment model %s is a DEVELOPMENT_ONLY prototype; not validated on independent subjects",
+                    model.info.name)
     return model

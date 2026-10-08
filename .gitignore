@@ -22,11 +22,18 @@ driver_env/
 # Large models (handled by Git LFS)
 *.h5
 *.pt
-driver_env/ 
-env/ 
-venv/ 
-__pycache__/ 
-*.pyc 
-*.pyo 
-*.pyd 
-.Python 
+
+# Local secrets and tool caches
+.env
+.pytest_cache/
+
+# Generated training data and run outputs (rebuild with python -m training.prepare_dataset)
+data/processed/*/images/
+models/*/runs/
+
+# Local database backups (contain password hashes and personal data)
+instance/backups/
+# Development email outbox (contains one-time codes)
+instance/dev_outbox/
+# Development-only Flask secret (generated locally; production must set SAFEDRIVE_SECRET_KEY)
+instance/.dev_secret_key

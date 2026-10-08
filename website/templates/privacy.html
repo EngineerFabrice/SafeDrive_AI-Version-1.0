@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy · SafeDrive AI{% endblock %}
+{% block content %}
+<div class="legal">
+<article>
+  <h1>SafeDrive AI Privacy Policy</h1>
+  <p class="meta">Version {{ version }} · Effective {{ effective }}</p>
+
+  <h2>1. Who we are</h2>
+  <p>SafeDrive AI was created and developed by Fabrice NDAYISABA. This policy explains what personal information SafeDrive
+     processes, why, and the choices you have. It should be read with the <a href="{{ url_for('account.terms') }}">Terms &amp; Conditions</a>.
+     We aim to handle personal information in line with applicable law, including Rwanda's law on the protection of personal
+     data and privacy.</p>
+
+  <h2>2. Information we process</h2>
+  <ul>
+    <li><b>Account information:</b> name, email address, phone number (optional; used by Umusare for payments), role, password
+        (stored only as a one-way hash), and when you verified your email and accepted these documents.</li>
+    <li><b>Cooperative information:</b> your cooperative, group, membership status and verification decisions, including any
+        reason a manager gives.</li>
+    <li><b>Vehicle information (drivers):</b> plate number, and optionally make, model and type.</li>
+    <li><b>Camera monitoring:</b> while monitoring is on, camera frames are processed to produce an assessment (SOBER, UNCERTAIN,
+        POTENTIALLY NOT SOBER). SafeDrive does not store camera images or face data; technical monitoring records (session times,
+        frame counts, status events) are kept for reliability.</li>
+    <li><b>Location:</b> see section 4.</li>
+    <li><b>Assistance and payments:</b> requests, their status and timestamps, journey distance, fares, payment confirmations,
+        ratings and problem reports.</li>
+    <li><b>Messages:</b> internal messages you send and receive.</li>
+    <li><b>Security records:</b> an audit log of security-relevant actions (for example sign-ins, verification decisions) with IP
+        address. The audit log never contains passwords, one-time codes, message text or precise locations.</li>
+  </ul>
+
+  <h2>3. Why we use it</h2>
+  <p>To provide and secure the service: creating and verifying accounts, cooperative management, safety monitoring, matching
+     drivers with Umusare, calculating fares, enabling payment confirmation, internal messaging, preventing fraud and abuse, and
+     meeting legal obligations.</p>
+
+  <h2>4. Location</h2>
+  <ul>
+    <li>Location is collected only when you use a feature that needs it.</li>
+    <li>For an assistance request, an Umusare sees only an area of about 1 km until they accept. After acceptance, the driver and
+        the accepted Umusare share exact live locations; this stops when the request ends and the exact pickup point is deleted.</li>
+    <li>Only the most recent position is kept while sharing is active &mdash; SafeDrive does not keep a location history.</li>
+    <li>Nearby drivers: while you use the nearby map, SafeDrive keeps only your latest approximate area (about 1 km) &mdash; never
+        your exact position &mdash; to find drivers around you and to reject implausible location jumps. It is deleted after one
+        hour without updates. Other drivers see you only if you switch visibility on (name, cooperative, group and approximate
+        area); switching it off hides you immediately.</li>
+    <li>Cooperative managers and administrators see operational status and approximate areas, not your exact position.</li>
+  </ul>
+
+  <h2>5. Who can see your information</h2>
+  <ul>
+    <li><b>Your cooperative manager</b> sees the profile, verification, vehicle and operational information of their own
+        cooperative's members only.</li>
+    <li><b>Administrators</b> manage the platform and can see account and cooperative information when needed.</li>
+    <li><b>An Umusare who accepts your request</b> sees your name, phone, vehicle plate and live location for that assistance.</li>
+    <li><b>A driver you assist</b> sees your SafeDrive identity details and phone number for that assistance.</li>
+    <li><b>Other verified drivers</b> see only what is described for nearby drivers, and only if you switch it on.</li>
+    <li><b>Service providers</b> such as email delivery and map-tile providers receive only what they need to provide their service.</li>
+  </ul>
+  <p>SafeDrive does not sell personal information.</p>
+
+  <h2>6. Retention</h2>
+  <p>We keep information for as long as your account exists and as needed for safety, dispute and security purposes. Live
+     locations and one-time codes are short-lived by design. You may ask for your account to be closed.</p>
+
+  <h2>7. Security</h2>
+  <p>We use measures such as password hashing, hashed one-time codes, server-side permission checks, CSRF protection and audit
+     logging. No system is perfectly secure; please protect your password and report suspected misuse.</p>
+
+  <h2>8. Your choices and rights</h2>
+  <p>You can update your phone and vehicle details, switch nearby-driver visibility on or off, and stop location sharing by
+     stopping the feature that uses it. Subject to applicable law, you may ask to access, correct or delete your personal
+     information, or object to certain processing.</p>
+
+  <h2>9. Changes</h2>
+  <p>We may update this policy. Each version is numbered and dated, and you may be asked to accept an updated version; earlier
+     acceptances remain on record.</p>
+
+  <h2>10. Contact</h2>
+  <p>SafeDrive AI &mdash; created/developed by Fabrice NDAYISABA.<br>
+     Email: <a href="mailto:{{ contact }}">{{ contact }}</a></p>
+  <p>This address belongs to the project's developer and does not represent a registered company or legal entity.</p>
+</article>
+</div>
+{% endblock %}

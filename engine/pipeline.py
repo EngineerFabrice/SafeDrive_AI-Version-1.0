@@ -1,10 +1,13 @@
 """Real-time monitoring pipeline.
 
 camera frame -> person detection -> driver ROI -> face detection
-             -> feature extraction -> [optional impairment model] -> state
+             -> face crop + quality check -> feature extraction
+             -> [impairment model] -> temporal decision engine -> state
 
 The impairment model is injected (see engine.impairment.create_impairment_model);
-the pipeline never chooses a concrete model itself.
+the pipeline never chooses a concrete model itself. Only a model that declares a
+``positive_class`` (the alcohol classifier) feeds the temporal decision engine,
+which turns frame probabilities into SOBER / UNCERTAIN / POTENTIALLY_NOT_SOBER.
 
 Runs in its own thread and publishes a ``MonitoringSnapshot`` after every
 frame (or every wait timeout when the camera delivers nothing). It has no
@@ -22,11 +25,13 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .camera import Camera, CameraConfig, FpsMeter, Frame
+from .decision import TemporalConfig, TemporalDecision, TemporalDecisionEngine
 from .detectors.driver_roi import DriverROI, DriverROIConfig, DriverROISelector
 from .detectors.face import FaceDetection, FaceDetector, FaceDetectorConfig
 from .detectors.person import PersonDetection, PersonDetector, PersonDetectorConfig
 from .features import FaceFeatures, FeatureExtractor, FeatureExtractorConfig
 from .impairment import ImpairmentInput, ImpairmentModel, ImpairmentResult, ImpairmentStatus
+from .preprocessing import FaceQuality, FaceQualityConfig, align_face_crop, assess_face_quality
 from .state import (CameraStatus, FeatureStatus, ModelStatus, MonitoringSnapshot,
                     MonitoringState, MonitoringStatus, resolve_status)
 
@@ -40,6 +45,8 @@ class PipelineConfig:
     driver_roi: DriverROIConfig = field(default_factory=DriverROIConfig)
     face: FaceDetectorConfig = field(default_factory=FaceDetectorConfig)
     features: FeatureExtractorConfig = field(default_factory=FeatureExtractorConfig)
+    quality: FaceQualityConfig = field(default_factory=FaceQualityConfig)
+    decision: TemporalConfig = field(default_factory=TemporalConfig)
     frame_wait_timeout: float = 0.5  # seconds; also the state refresh period when no frames arrive
 
 
@@ -50,7 +57,9 @@ class FrameAnalysis:
     face: Optional[FaceDetection]
     features: Optional[FaceFeatures]  # None when no face was found
     processing_time: float  # ms, all stages including feature extraction
-    impairment: Optional[ImpairmentResult] = None  # None: no model, or features unavailable
+    impairment: Optional[ImpairmentResult] = None  # None: no model, or no usable input this frame
+    face_crop: Optional[np.ndarray] = None         # aligned BGR crop given to an image model
+    face_quality: Optional[FaceQuality] = None
 
 
 class MonitoringPipeline:
@@ -60,7 +69,8 @@ class MonitoringPipeline:
                  face_detector: Optional[FaceDetector] = None,
                  feature_extractor: Optional[FeatureExtractor] = None,
                  state: Optional[MonitoringState] = None,
-                 impairment_model: Optional[ImpairmentModel] = None):
+                 impairment_model: Optional[ImpairmentModel] = None,
+                 decision_engine: Optional[TemporalDecisionEngine] = None):
         self.config = config or PipelineConfig()
         self.camera = camera or Camera(self.config.camera)
         self.person_detector = person_detector or PersonDetector(self.config.person)
@@ -70,6 +80,8 @@ class MonitoringPipeline:
         self.feature_extractor = feature_extractor or FeatureExtractor(
             self.config.features, landmark_detector=self.face_detector.landmark_detector)
         self.impairment_model = impairment_model
+        self.decision = decision_engine or TemporalDecisionEngine(self.config.decision)
+        self._assessment: Optional[TemporalDecision] = None
         self.state = state or MonitoringState()
         self.state.update(impairment_model=impairment_model.info.to_dict() if impairment_model else None)
         self._fps = FpsMeter()
@@ -89,6 +101,9 @@ class MonitoringPipeline:
         self.state.update(frames_processed=0)
         self.roi_selector.reset()
         self.feature_extractor.reset()
+        self.decision.reset()          # every monitoring session starts a fresh initial assessment
+        self._assessment = None
+        self.state.update(assessment=None, face_quality=None)
         self.camera.start()
         self._thread = threading.Thread(target=self._run, name="safedrive-pipeline", daemon=True)
         self._thread.start()
@@ -106,7 +121,7 @@ class MonitoringPipeline:
                           processing_time=None, driver_bbox=None, driver_confidence=None,
                           face_bbox=None, features_status=FeatureStatus.FEATURES_UNAVAILABLE,
                           features=None, feature_time=None, impairment=None,
-                          message="Monitoring stopped")
+                          assessment=None, face_quality=None, message="Monitoring stopped")
 
     @property
     def is_running(self) -> bool:
@@ -143,22 +158,50 @@ class MonitoringPipeline:
         persons = tuple(self.person_detector.detect(image))
         driver = self.roi_selector.select(persons, image.shape)
         face = self.face_detector.detect(image, driver.roi) if driver else None
+        crop, quality = None, None
         if face is not None:
             features = self._extract_features(image, face, captured_at, frame_id)
+            crop, quality = self._face_crop(image, face)
         else:
             features = None
             self.feature_extractor.reset()  # no motion measured across a lost face
-        impairment = self._predict_impairment(features)
+        impairment = self._predict_impairment(features, crop, quality)
         return FrameAnalysis(persons=persons, driver=driver, face=face, features=features,
                              processing_time=(time.perf_counter() - t0) * 1000,
-                             impairment=impairment)
+                             impairment=impairment, face_crop=crop, face_quality=quality)
 
-    def _predict_impairment(self, features: Optional[FaceFeatures]) -> Optional[ImpairmentResult]:
-        """Run the configured model on available features only; never raises."""
-        if self.impairment_model is None or features is None or not features.valid:
-            return None
+    def _face_crop(self, image: np.ndarray, face: FaceDetection):
+        """Aligned crop (same function as training) and its quality; (None, None) on failure."""
         try:
-            return self.impairment_model.predict(ImpairmentInput.from_features(features))
+            crop = align_face_crop(image, face.bbox, face.landmarks)
+            # Haar scores are relative weights, not confidences: only YuNet scores are checked.
+            score = face.score if face.backend == "yunet" else None
+            return crop, assess_face_quality(crop, face.bbox, score, self.config.quality)
+        except Exception:
+            log.exception("Face crop failed")
+            return None, None
+
+    def _predict_impairment(self, features: Optional[FaceFeatures], crop: Optional[np.ndarray] = None,
+                            quality: Optional[FaceQuality] = None) -> Optional[ImpairmentResult]:
+        """Run the configured model on usable input only; never raises.
+
+        Image models get the aligned crop, and only when the face passed the quality
+        check: a poor face image never produces a confident prediction.
+        """
+        model = self.impairment_model
+        if model is None:
+            return None
+        if model.info.input_type == "face_image":
+            if crop is None or quality is None or not quality.ok:
+                return None
+            inp = (ImpairmentInput.from_features(features, face_image=crop) if features is not None
+                   else ImpairmentInput.from_face(crop))
+        else:
+            if features is None or not features.valid:
+                return None
+            inp = ImpairmentInput.from_features(features)
+        try:
+            return model.predict(inp)
         except Exception as exc:  # predict() already guards model code; this guards the interface
             log.exception("Impairment model call failed")
             return ImpairmentResult(status=ImpairmentStatus.MODEL_ERROR, model=self.impairment_model.info,
@@ -226,7 +269,25 @@ class MonitoringPipeline:
             self._fps.tick()
             self._frames_processed += 1
             self._latest = (frame, analysis)
+            self._assess(analysis, frame)
             self._publish(camera_status, model_status, frame, analysis, "")
+
+    def _assess(self, analysis: FrameAnalysis, frame: Frame) -> Optional[TemporalDecision]:
+        """Feed one processed frame to the temporal decision engine.
+
+        Frames without a usable prediction (no driver, no face, poor quality, model
+        error) are still added, as invalid observations, so the engine can report
+        UNCERTAIN instead of silently keeping an old result.
+        """
+        model = self.impairment_model
+        positive = model.info.positive_class if model is not None else None
+        if not positive:
+            return None
+        imp = analysis.impairment
+        p = imp.probabilities.get(positive) if imp is not None and imp.valid and imp.probabilities else None
+        quality = analysis.face_quality.score if analysis.face_quality is not None else 0.0
+        self._assessment = self.decision.update(p_not_sober=p, quality=quality, timestamp=frame.captured_at)
+        return self._assessment
 
     def _publish(self, camera_status: CameraStatus, model_status: ModelStatus,
                  frame: Optional[Frame], analysis: Optional[FrameAnalysis], message: str) -> None:
@@ -260,6 +321,8 @@ class MonitoringPipeline:
             features=features.to_dict() if features is not None else None,
             feature_time=round(features.processing_time, 2) if features is not None else None,
             impairment=analysis.impairment.to_dict() if analysis and analysis.impairment else None,
+            assessment=self._assessment.to_dict() if self._assessment is not None else None,
+            face_quality=analysis.face_quality.to_dict() if analysis and analysis.face_quality else None,
             message=message,
         )
 
@@ -281,6 +344,10 @@ def draw_overlay(image: np.ndarray, analysis: Optional[FrameAnalysis],
             cv2.rectangle(out, (f.x1, f.y1), (f.x2, f.y2), (0, 220, 0), 2)
     latency = f"{snapshot.frame_latency:.0f}ms" if snapshot.frame_latency is not None else "-"
     lines = [f"{snapshot.status.value}  fps {snapshot.fps:.1f}  latency {latency}"]
+    if snapshot.assessment:
+        a = snapshot.assessment
+        score = f"{a['score']:.2f}" if a.get("score") is not None else "-"
+        lines.append(f"AI: {a['assessment']}  score {score}  valid {a['valid_frames']}/{a['total_frames']}")
     feats = analysis.features if analysis else None
     if feats is not None and feats.head_pose.valid:
         hp, gz = feats.head_pose, feats.gaze

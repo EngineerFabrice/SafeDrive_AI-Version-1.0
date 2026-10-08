@@ -96,6 +96,11 @@ class MonitoringSnapshot:
     # only: it never changes `status`, and a mock model is flagged development_only.
     impairment: Optional[dict] = None
     impairment_model: Optional[dict] = None  # ModelInfo of the configured model; None = disabled
+    # Temporal decision (TemporalDecision.to_dict()): SOBER / UNCERTAIN / POTENTIALLY_NOT_SOBER, or
+    # ASSESSING. None when no alcohol classifier is configured. Separate from `status`, which
+    # only describes whether the system is able to monitor.
+    assessment: Optional[dict] = None
+    face_quality: Optional[dict] = None      # FaceQuality.to_dict() of the last face
     message: str = ""
 
     def to_dict(self) -> dict:

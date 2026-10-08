@@ -1,0 +1,362 @@
+{
+  "version": "1",
+  "arch": "mobilenet_v3_small",
+  "classes": [
+    "non_alcoholic",
+    "alcoholic"
+  ],
+  "positive_class": "alcoholic",
+  "input_size": 224,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "crop": "engine.preprocessing.align_face_crop (YuNet box + eye-line alignment)",
+  "dataset": "AlcoholDetectionDataset",
+  "label_type": "dataset_label_unverified",
+  "selected_stage": "head",
+  "development_only": true,
+  "limitations": "Prototype trained on AlcoholDetectionDataset: one recording of one person per class, undocumented labels, strong lighting/colour/glasses/background differences between classes. Not validated on independent people; never a measurement of blood alcohol.",
+  "selection": {
+    "head": {
+      "validation": {
+        "n": 38,
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "sensitivity_positive": 1.0,
+        "specificity_negative": 1.0,
+        "f1": 1.0,
+        "false_positive_rate": 0.0,
+        "false_negative_rate": 0.0,
+        "confusion_matrix": [
+          [
+            19,
+            0
+          ],
+          [
+            0,
+            19
+          ]
+        ],
+        "threshold": 0.5,
+        "roc_auc": 1.0
+      },
+      "robustness": {
+        "original": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "darker": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "brighter": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "grayscale": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "blur": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "warm_cast": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        }
+      },
+      "mean_f1_under_perturbation": 1.0,
+      "worst_f1_under_perturbation": 1.0
+    },
+    "finetune": {
+      "validation": {
+        "n": 38,
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "sensitivity_positive": 1.0,
+        "specificity_negative": 1.0,
+        "f1": 1.0,
+        "false_positive_rate": 0.0,
+        "false_negative_rate": 0.0,
+        "confusion_matrix": [
+          [
+            19,
+            0
+          ],
+          [
+            0,
+            19
+          ]
+        ],
+        "threshold": 0.5,
+        "roc_auc": 1.0
+      },
+      "robustness": {
+        "original": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "darker": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "brighter": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "grayscale": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "blur": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        },
+        "warm_cast": {
+          "n": 38,
+          "accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "sensitivity_positive": 1.0,
+          "specificity_negative": 1.0,
+          "f1": 1.0,
+          "false_positive_rate": 0.0,
+          "false_negative_rate": 0.0,
+          "confusion_matrix": [
+            [
+              19,
+              0
+            ],
+            [
+              0,
+              19
+            ]
+          ],
+          "threshold": 0.5,
+          "roc_auc": 1.0
+        }
+      },
+      "mean_f1_under_perturbation": 1.0,
+      "worst_f1_under_perturbation": 1.0
+    }
+  }
+}

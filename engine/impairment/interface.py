@@ -42,6 +42,10 @@ class ModelInfo:
     is_mock: bool = False
     development_only: bool = False
     description: str = ""
+    input_type: str = "features"        # "features" (29-value vector) or "face_image" (aligned BGR crop)
+    # Class whose probability means "potentially not sober". Only models that declare it feed the
+    # temporal decision engine; the mock model leaves it None, so its output can never raise a warning.
+    positive_class: Optional[str] = None
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -51,18 +55,26 @@ class ModelInfo:
 
 @dataclass(frozen=True)
 class ImpairmentInput:
-    """One Phase 2 feature vector plus the information needed to check and trace it."""
+    """One frame's model input: the Phase 2 feature vector and/or the aligned face crop."""
     vector: np.ndarray                  # shape (29,), FEATURE_NAMES order, NaN = missing
     schema_version: int
     timestamp: Optional[float] = None   # wall clock (epoch s) of the source frame
     frame_id: Optional[int] = None
     feature_names: Optional[Tuple[str, ...]] = None  # optional extra check of the order
+    face_image: Optional[np.ndarray] = None          # aligned BGR uint8 crop (engine.preprocessing)
 
     @classmethod
-    def from_features(cls, features: FaceFeatures) -> "ImpairmentInput":
+    def from_features(cls, features: FaceFeatures, face_image: Optional[np.ndarray] = None) -> "ImpairmentInput":
         return cls(vector=features.to_vector(), schema_version=FEATURE_SCHEMA_VERSION,
                    timestamp=features.timestamp, frame_id=features.frame_id,
-                   feature_names=FEATURE_NAMES)
+                   feature_names=FEATURE_NAMES, face_image=face_image)
+
+    @classmethod
+    def from_face(cls, face_image: np.ndarray, timestamp: Optional[float] = None,
+                  frame_id: Optional[int] = None) -> "ImpairmentInput":
+        """Input for an image model when no feature vector is available."""
+        return cls(vector=np.full(len(FEATURE_NAMES), np.nan, np.float32), schema_version=FEATURE_SCHEMA_VERSION,
+                   timestamp=timestamp, frame_id=frame_id, face_image=face_image)
 
 
 @dataclass(frozen=True)
@@ -108,6 +120,18 @@ class SchemaMismatchError(ValueError):
     pass
 
 
+def check_face_image(image) -> np.ndarray:
+    """Validate an aligned face crop: HxWx3 uint8, at least 16x16."""
+    if image is None:
+        raise ValueError("face image missing")
+    arr = np.asarray(image)
+    if arr.ndim != 3 or arr.shape[2] != 3 or arr.shape[0] < 16 or arr.shape[1] < 16:
+        raise ValueError(f"face image must be HxWx3 (got shape {arr.shape})")
+    if arr.dtype != np.uint8:
+        raise ValueError(f"face image must be uint8 (got {arr.dtype})")
+    return arr
+
+
 def check_vector(vector, schema_version: int,
                  feature_names: Optional[Sequence[str]] = None) -> np.ndarray:
     """Validate a feature vector against the frozen Phase 2 schema; returns it as float32.
@@ -151,16 +175,19 @@ class ImpairmentModel(ABC):
             return ImpairmentResult(status=ImpairmentStatus.MODEL_UNAVAILABLE,
                                     error=self.unavailable_reason, **base)
         try:
-            vector = check_vector(inp.vector, inp.schema_version, inp.feature_names)
-            if self.info.schema_version != FEATURE_SCHEMA_VERSION:
-                raise SchemaMismatchError(
-                    f"model expects schema v{self.info.schema_version}, engine produces v{FEATURE_SCHEMA_VERSION}")
+            if self.info.input_type == "face_image":
+                model_input = check_face_image(inp.face_image)
+            else:
+                model_input = check_vector(inp.vector, inp.schema_version, inp.feature_names)
+                if self.info.schema_version != FEATURE_SCHEMA_VERSION:
+                    raise SchemaMismatchError(
+                        f"model expects schema v{self.info.schema_version}, engine produces v{FEATURE_SCHEMA_VERSION}")
         except SchemaMismatchError as exc:
             return ImpairmentResult(status=ImpairmentStatus.SCHEMA_MISMATCH, error=str(exc), **base)
         except ValueError as exc:
             return ImpairmentResult(status=ImpairmentStatus.INVALID_INPUT, error=str(exc), **base)
         try:
-            prediction, probabilities = self._predict(vector)
+            prediction, probabilities = self._predict(model_input)
         except Exception as exc:  # a model fault must never look like a prediction
             return ImpairmentResult(status=ImpairmentStatus.MODEL_ERROR,
                                     error=f"{type(exc).__name__}: {exc}", **base)
@@ -176,10 +203,11 @@ class ImpairmentModel(ABC):
         return ""
 
     @abstractmethod
-    def _predict(self, vector: np.ndarray) -> Tuple[str, Optional[Dict[str, float]]]:
-        """Return (predicted class, class probabilities or None) for a validated vector.
+    def _predict(self, model_input: np.ndarray) -> Tuple[str, Optional[Dict[str, float]]]:
+        """Return (predicted class, class probabilities or None) for validated input.
 
-        ``vector`` may contain NaN for missing features; the model decides how to handle them.
+        ``model_input`` is the feature vector (may contain NaN for missing features) for
+        ``input_type="features"`` models, or the aligned BGR face crop for ``"face_image"`` models.
         """
 
 

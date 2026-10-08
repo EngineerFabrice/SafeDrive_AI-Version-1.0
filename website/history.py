@@ -104,10 +104,14 @@ class HistoryStore:
                 (STALE_SESSION_SECONDS, exclude_id or ""))
         return self._transaction(work)
 
-    def list_sessions(self, limit=20):
+    def list_sessions(self, limit=20, started_by=None):
+        """Most recent sessions; only those started by ``started_by`` when it is given."""
+        where, args = ("WHERE s.started_by = %s ", (started_by, limit)) if started_by is not None else ("", (limit,))
+
         def work(cursor):
             cursor.execute("SELECT s.*, (SELECT COUNT(*) FROM monitoring_events e WHERE e.session_id = s.id) "
-                           "AS event_count FROM monitoring_sessions s ORDER BY started_at DESC LIMIT %s", (limit,))
+                           "AS event_count FROM monitoring_sessions s " + where +
+                           "ORDER BY started_at DESC LIMIT %s", args)
             return cursor.fetchall()
         return self._transaction(work)
 
@@ -223,6 +227,11 @@ class HistoryRecorder:
         while self._has_pending() and time.monotonic() < deadline:
             if not self._flush():
                 break
+
+    def active_owner(self):
+        """users.id of whoever started the active session (None when no session is open)."""
+        with self._lock:
+            return self._session.started_by if self._session else None
 
     def status(self):
         with self._lock:

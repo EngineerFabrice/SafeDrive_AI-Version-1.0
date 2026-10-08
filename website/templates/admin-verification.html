@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block title %}Verification{% endblock %}
+{% block heading %}Member verification{% endblock %}
+{% block styles %}
+.tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.tabs a { padding:8px 14px; border-radius:999px; background:#fff; border:1px solid var(--border); text-decoration:none; color:var(--text-dark); font-size:14px; font-weight:600; }
+.tabs a.on { background:var(--primary); color:#fff; border-color:var(--primary); }
+{% endblock %}
+{% block content %}
+<div class="tabs" role="tablist">
+    {% for s in states %}
+    <a role="tab" class="{{ 'on' if s == status }}" href="{{ url_for('coop.verification', status=s, cooperative=cooperative) }}">{{ s | capitalize }} ({{ counts[s] }})</a>
+    {% endfor %}
+</div>
+<section class="panel">
+    <form class="inline" method="GET" action="{{ url_for('coop.verification') }}" style="margin-bottom:12px;">
+        <input type="hidden" name="status" value="{{ status }}">
+        <select name="cooperative" aria-label="Cooperative">
+            <option value="">All cooperatives</option>
+            {% for c in coops %}<option value="{{ c.id }}" {{ 'selected' if cooperative == c.id|string }}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-light btn-sm" type="submit">Filter</button>
+    </form>
+    <p class="muted" style="margin-bottom:12px;">Cooperative managers normally verify their own members. Administrators can override
+        any decision from the member's page; every change is audited.</p>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>ID</th><th>Role</th><th>Cooperative</th><th>Email</th><th>Status</th><th>Registered</th><th>Last review</th><th></th></tr></thead>
+        <tbody>{% for m in rows %}
+        <tr><td><b>{{ m.username }}</b></td><td class="muted">{{ m.code }}</td><td>{{ "Umusare" if m.role == "umusare" else "Driver" }}</td>
+            <td>{{ m.cooperative }}</td><td>{{ m.email }}</td>
+            <td>{% if m.info_requested %}<span class="badge info">INFO REQUESTED</span>{% else %}<span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(m.verification_status, 'bad') }}">{{ m.verification_status }}</span>{% endif %}</td>
+            <td>{{ m.created_at.strftime('%Y-%m-%d') }}</td>
+            <td>{{ (m.verified_at or m.reviewed_at).strftime('%Y-%m-%d') if (m.verified_at or m.reviewed_at) else "—" }}</td>
+            <td><a class="btn btn-light btn-sm" href="{{ url_for('coop.member', user_id=m.id) }}">Review</a></td></tr>
+        {% else %}<tr><td colspan="9" class="muted">No members with this status.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+{% endblock %}

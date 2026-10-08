@@ -1,0 +1,20 @@
+# SafeDrive AI runtime + test dependencies (Python 3.10). Versions are those verified locally.
+# Web / backend
+Flask==3.1.3
+Flask-Login==0.6.3
+Flask-Bcrypt==1.0.1
+Flask-WTF==1.3.0
+PyMySQL==1.2.0
+cryptography>=42          # required by PyMySQL for MySQL 8 password authentication (caching_sha2)
+python-dotenv==1.2.3
+
+# Computer vision engine
+numpy==2.2.6
+opencv-python==4.12.0.88
+ultralytics==8.3.232      # YOLOv8n person detector (AGPL-3.0)
+torch==2.9.1              # CPU build is sufficient; also used for MobileNetV3 in a later phase
+torchvision==0.24.1
+scikit-learn==1.7.2     # metrics and shortcut probes in training/
+
+# Tests
+pytest==8.1.1

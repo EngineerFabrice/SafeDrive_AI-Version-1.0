@@ -1,323 +1,447 @@
 # website/routes.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from flask_login import login_user, logout_user, login_required, current_user
-from . import User, get_connection, bcrypt
-from datetime import datetime
+"""Accounts, cooperatives and role dashboards (schema: website/migrations/0002_core_schema.sql)."""
+import os
+import re
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+
+import pymysql
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask_login import current_user, login_required, login_user, logout_user
+
+from . import (MEMBER_ROLES, ROLE_ADMIN, ROLE_DRIVER, ROLE_MANAGER, ROLE_UMUSARE, ROLES,
+               SELF_REGISTER_ROLES, bcrypt, get_connection, get_user_by_email)
+from . import audit
+from .assistance_service import AssistanceError
+from .auth import dashboard_url, normalize_phone, roles_required, safe_local_path, validate_registration
 
 routes = Blueprint("routes", __name__)
 
-# The legacy single-image classifiers (driver_alcoholism_model.h5 /
-# Drunking_Detection_Model.h5 via website/yolo_detector.py) are no longer
-# loaded here. Live analysis runs in the `engine` package and is exposed
-# through the /monitoring endpoints (website/monitoring.py).
-LEGACY_DETECTION_MESSAGE = (
-    "This detection endpoint is deprecated. Live analysis now runs in the SafeDrive "
-    "engine; see /monitoring/status. No impairment result is available yet."
-)
+_COOP_CODE = re.compile(r"^[A-Z0-9-]{2,20}$")
+_dummy_hash = None   # compared against when the email is unknown, so timing does not reveal accounts
+
+
+@contextmanager
+def db_cursor():
+    """Cursor in one transaction: commit on success, roll back on any error."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cursor:
+            yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _membership(cursor, user_id):
+    cursor.execute(
+        "SELECT m.member_role, m.status AS membership_status, c.id AS cooperative_id, "
+        "c.name AS cooperative_name, c.code AS cooperative_code "
+        "FROM cooperative_memberships m JOIN cooperatives c ON c.id = m.cooperative_id "
+        "WHERE m.user_id = %s", (user_id,))
+    return cursor.fetchone()
+
+
+def _approved_cooperatives(cursor):
+    cursor.execute("SELECT id, name, code, district FROM cooperatives WHERE status='APPROVED' ORDER BY name")
+    return cursor.fetchall()
+
+
+def _safe_next(target):
+    """Only allow same-site relative redirects after login."""
+    return safe_local_path(target)
+
 
 # ========================= HOME =========================
 @routes.route('/')
 def home():
     return render_template('home.html')
 
+
+@routes.route('/dashboard')
+@login_required
+def dashboard():
+    return redirect(dashboard_url(current_user))
+
+
 # ========================= REGISTER =========================
-@routes.route('/register', methods=['GET','POST'])
+@routes.route('/register', methods=['GET', 'POST'])
 def register():
+    """Create a driver / Umusare account: Terms accepted, then email OTP, then cooperative verification.
+
+    The response never reveals whether an email is already registered: a duplicate gets the same
+    "we sent you a code" screen (and the existing owner gets a notice email instead of a code).
+    """
+    from . import vehicle as vehicle_mod
+    from . import email_otp
+    from .email_otp import mask_email
+    from .group_service import active_groups_for_registration
+    from .legal import record_acceptance
+    if current_user.is_authenticated:
+        return redirect(dashboard_url(current_user))
+    with db_cursor() as cursor:
+        cooperatives = _approved_cooperatives(cursor)
+        groups = active_groups_for_registration(cursor)
+
+    form = {}
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+        keys = ("username", "email", "phone", "role", "cooperative_id", "group_id", "vehicle_plate_number",
+                "vehicle_make", "vehicle_model", "vehicle_type")
+        form = {k: (request.form.get(k) or "").strip() for k in keys}
+        form["email"] = form["email"].lower()
+        password = request.form.get("password") or ""
+        errors = validate_registration(form["username"], form["email"], password,
+                                       request.form.get("confirm_password") or "")
+        if form["role"] not in SELF_REGISTER_ROLES:
+            errors.append("Choose whether you register as a driver or as an Umusare.")
+        coop_ids = {str(c["id"]): c for c in cooperatives}
+        if form["cooperative_id"] not in coop_ids:
+            errors.append("Choose your cooperative.")
+        phone = None
+        if form["phone"]:
+            try:
+                phone = normalize_phone(form["phone"])
+            except ValueError as exc:
+                errors.append(str(exc))
+        group_id = None
+        if form["group_id"]:
+            match = [g for g in groups if str(g["id"]) == form["group_id"]
+                     and str(g["cooperative_id"]) == form["cooperative_id"]]
+            if match:
+                group_id = match[0]["id"]
+            else:
+                errors.append("Choose a group of your own cooperative, or leave the group empty.")
+        vehicle = None
+        if form["role"] == ROLE_DRIVER:
+            try:
+                vehicle = vehicle_mod.validate(form, require_plate=False)
+            except ValueError as exc:
+                errors.append(str(exc))
+        if request.form.get("accept_terms") != "1":
+            errors.append("Please read and accept the Terms & Conditions and Privacy Policy to create an account.")
+        if not errors and _registrations_from_this_network() >= _registration_limit():
+            errors.append("Too many accounts were created from this network recently. Please try again later.")
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE email=%s", (email,))
-        if cursor.fetchone():
-            flash('❌ Email already exists.', 'danger')
-            cursor.close()
-            conn.close()
-            return redirect(url_for('routes.register'))
+        if not errors:
+            hashed = bcrypt.generate_password_hash(password).decode('utf-8')
+            masked = mask_email(form["email"])
+            message = (f"We sent a 6-digit verification code to {masked}. "
+                       "Enter it below to verify your email address.")
+            try:
+                with db_cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO users (username, email, password_hash, role, phone) VALUES (%s, %s, %s, %s, %s)",
+                        (form["username"], form["email"], hashed, form["role"], phone))
+                    user_id = cursor.lastrowid
+                    coop_id = int(form["cooperative_id"])
+                    now = _utcnow()
+                    cursor.execute(
+                        "INSERT INTO cooperative_memberships (user_id, cooperative_id, member_role, group_id, "
+                        "group_assigned_at) VALUES (%s, %s, %s, %s, %s)",
+                        (user_id, coop_id, form["role"], group_id, now if group_id else None))
+                    if form["role"] == ROLE_DRIVER:
+                        v = vehicle or {}
+                        cursor.execute(
+                            "INSERT INTO driver_profiles (user_id, vehicle_plate_number, vehicle_make, vehicle_model, "
+                            "vehicle_type, vehicle_updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+                            (user_id, v.get("vehicle_plate_number"), v.get("vehicle_make"), v.get("vehicle_model"),
+                             v.get("vehicle_type"), now if v.get("vehicle_plate_number") else None))
+                    else:
+                        cursor.execute("INSERT INTO umusare_profiles (user_id) VALUES (%s)", (user_id,))
+                    audit.record(audit.USER_REGISTERED, actor_id=user_id, target_type="user",
+                                 target_id=user_id, cooperative_id=coop_id,
+                                 details={"role": form["role"]}, cursor=cursor)
+                    record_acceptance(cursor, user_id, now)
+            except pymysql.err.IntegrityError:
+                # Duplicate email: the response must be indistinguishable from a new account (same redirect,
+                # message, cookie shape and countdown); the real owner gets a notice email, never a code.
+                audit.record(audit.REGISTRATION_DUPLICATE, target_type="user")
+                user_id = None
+            state = email_otp.flow_new(user_id, form["email"])
+            delivered = True
+            try:
+                if user_id:
+                    email_otp.issue(user_id)
+                else:
+                    email_otp.decoy_send(form["email"])
+            except AssistanceError as exc:
+                delivered = False
+                flash(exc.message, "warning")
+            else:
+                flash(message, "success")
+            email_otp.flow_record_send(state, time.time(), delivered)   # counts even when delivery failed
+            session["verify"] = {"t": email_otp.flow_dump(state), "masked": masked}
+            return redirect(url_for('account.verify_email'))
+        for e in errors:
+            flash(e, "danger")
+    return render_template('register.html', cooperatives=cooperatives, groups=groups, form=form,
+                           vehicle_types=_vehicle_types())
 
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-        cursor.execute(
-            "INSERT INTO users (username,email,password,role) VALUES (%s,%s,%s,%s)",
-            (username,email,hashed_password,'driver')
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        flash('✅ Registration successful! Please login.', 'success')
-        return redirect(url_for('routes.login'))
-    return render_template('register.html')
+
+def _vehicle_types():
+    from .vehicle import VEHICLE_TYPES
+    return VEHICLE_TYPES
+
+
+def _registration_limit():
+    try:
+        return max(1, int(os.environ.get("REGISTRATION_LIMIT_PER_HOUR", "10")))
+    except ValueError:
+        return 10
+
+
+def _registrations_from_this_network():
+    """Accounts (and duplicate attempts) created from this IP address in the last hour."""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) AS n FROM audit_logs WHERE action IN ('USER_REGISTERED','REGISTRATION_DUPLICATE') "
+                       "AND ip_address <=> %s AND occurred_at >= %s",
+                       (request.remote_addr, _utcnow() - timedelta(hours=1)))
+        return cursor.fetchone()["n"]
+
 
 # ========================= LOGIN =========================
-@routes.route('/login', methods=['GET','POST'])
+@routes.route('/login', methods=['GET', 'POST'])
 def login():
+    global _dummy_hash
+    if current_user.is_authenticated:
+        return redirect(dashboard_url(current_user))
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+        email = (request.form.get('email') or "").strip().lower()
+        password = request.form.get('password') or ""
+        user = get_user_by_email(email) if email else None
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, email, password, role FROM users WHERE email=%s", (email,))
-        user_data = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        if user is None:
+            if _dummy_hash is None:
+                _dummy_hash = bcrypt.generate_password_hash("timing-equaliser").decode()
+            bcrypt.check_password_hash(_dummy_hash, password)
+            ok = False
+        else:
+            ok = user.is_active and bcrypt.check_password_hash(user.password_hash, password)
 
-        if user_data and bcrypt.check_password_hash(user_data['password'], password):
-            user = User(
-                id=user_data['id'],
-                username=user_data['username'],
-                email=user_data['email'],
-                password=user_data['password'],
-                role=user_data['role']
-            )
+        if ok:
             login_user(user)
-            flash(f'Welcome {user.username}!', 'success')
-            if user.is_admin():
-                return redirect(url_for('routes.admin_dashboard'))
-            elif user.is_chef():
-                return redirect(url_for('routes.chef_dashboard'))
-            else:
-                return redirect(url_for('routes.driver_dashboard'))
+            with db_cursor() as cursor:
+                cursor.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (_utcnow(), user.id))
+            audit.record(audit.LOGIN_SUCCEEDED, actor_id=user.id, target_type="user", target_id=user.id)
+            return redirect(_safe_next(request.args.get("next")) or dashboard_url(user))
 
-        flash('❌ Incorrect email or password.', 'danger')
+        audit.record(audit.LOGIN_FAILED, target_type="user", target_id=user.id if user else None)
+        flash('Incorrect email or password.', 'danger')
     return render_template('login.html')
 
+
 # ========================= LOGOUT =========================
-@routes.route('/logout')
+@routes.route('/logout', methods=['POST'])
 @login_required
 def logout():
+    audit.record(audit.LOGOUT, actor_id=current_user.id, target_type="user", target_id=current_user.id)
     logout_user()
-    flash('You have been logged out.', 'info')
+    flash('You have been signed out.', 'info')
     return redirect(url_for('routes.home'))
 
-# ========================= ADMIN DASHBOARD =========================
+
+# ========================= ADMIN =========================
 @routes.route('/admin-dashboard')
-@login_required
+@roles_required(ROLE_ADMIN)
 def admin_dashboard():
-    if not current_user.is_admin():
-        flash("⚠️ Access denied.", "danger")
-        return redirect(url_for("routes.home"))
+    with db_cursor() as cursor:
+        cursor.execute(
+            "SELECT u.id, u.username, u.email, u.role, u.is_active, m.status AS membership_status, "
+            "c.id AS cooperative_id, c.name AS cooperative_name "
+            "FROM users u LEFT JOIN cooperative_memberships m ON m.user_id = u.id "
+            "LEFT JOIN cooperatives c ON c.id = m.cooperative_id ORDER BY u.created_at DESC")
+        users = cursor.fetchall()
+        cursor.execute(
+            "SELECT c.id, c.name, c.code, c.district, c.status, "
+            "SUM(m.member_role='driver' AND m.status='APPROVED') AS drivers, "
+            "SUM(m.member_role='umusare' AND m.status='APPROVED') AS umusare, "
+            "SUM(m.status='PENDING') AS pending "
+            "FROM cooperatives c LEFT JOIN cooperative_memberships m ON m.cooperative_id = c.id "
+            "GROUP BY c.id ORDER BY c.name")
+        cooperatives = cursor.fetchall()
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email, role FROM users")
-    users = cursor.fetchall()
-
-    total_users = len(users)
-    total_drivers = sum(1 for u in users if u['role'] == 'driver')
-    total_chefs = sum(1 for u in users if u['role'] == 'chef')
-    total_admins = sum(1 for u in users if u['role'] == 'admin')
-
-    # Fetch recent driver detection reports
-    cursor.execute(
-        "SELECT driver_id, detection_type, status, timestamp "
-        "FROM driver_detection_reports ORDER BY timestamp DESC LIMIT 5"
-    )
-    reports = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        'admin-dashboard.html',
-        username=current_user.username,
-        users=users,
-        reports=reports,
-        total_users=total_users,
-        total_drivers=total_drivers,
-        total_chefs=total_chefs,
-        total_admins=total_admins
-    )
-
-# ========================= CHEF DASHBOARD =========================
-@routes.route('/chef-dashboard')
-@login_required
-def chef_dashboard():
-    if not current_user.is_chef():
-        flash("⚠️ Access denied.", "danger")
-        return redirect(url_for("routes.home"))
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, status, license FROM users WHERE role='driver'")
-    drivers = cursor.fetchall()
-
-    cursor.execute("SELECT COUNT(*) AS count FROM trips WHERE status='planned'")
-    active_trips = cursor.fetchone()['count']
-
-    cursor.execute("SELECT COUNT(*) AS count FROM trips WHERE status='completed'")
-    completed_trips = cursor.fetchone()['count']
-
-    cursor.execute(
-        "SELECT driver_id, detection_type, status, timestamp "
-        "FROM driver_detection_reports ORDER BY timestamp DESC LIMIT 5"
-    )
-    reports = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        'chef-dashboard.html',
-        username=current_user.username,
-        drivers=drivers,
-        active_trips=active_trips,
-        completed_trips=completed_trips,
-        reports=reports
-    )
-
-# ========================= DRIVER DASHBOARD =========================
-@routes.route('/driver-dashboard')
-@login_required
-def driver_dashboard():
-    if not current_user.is_driver():
-        flash("⚠️ Access denied.", "danger")
-        return redirect(url_for("routes.home"))
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT start_location,end_location,start_time,end_time,status,distance_km,duration_minutes "
-        "FROM trips WHERE user_id=%s ORDER BY start_time DESC",
-        (current_user.id,)
-    )
-    trips = cursor.fetchall()
-
-    total_trips = len(trips)
-    total_distance = sum(t.get("distance_km",0) for t in trips)
-    total_minutes = sum(t.get("duration_minutes",0) for t in trips)
-    driving_hours = f"{total_minutes//60}h {total_minutes%60}m"
-
-    cursor.execute(
-        "SELECT license, fuel_type, length, service_date FROM vehicles WHERE driver_id=%s LIMIT 1",
-        (current_user.id,)
-    )
-    vehicle = cursor.fetchone()
-    if not vehicle:
-        vehicle = {"license":"N/A","fuel_type":"N/A","length":"N/A","service_date":"N/A"}
-
-    cursor.execute(
-        "SELECT detection_type, status, timestamp FROM driver_detection_reports "
-        "WHERE driver_id=%s ORDER BY timestamp DESC LIMIT 5",
-        (current_user.id,)
-    )
-    reports = cursor.fetchall()
-
-    current_trip = next((t for t in trips if t['status'].lower()=="en route"), None)
-    cursor.close()
-    conn.close()
-
-    return render_template(
-        "driver-dashboard.html",
-        username=current_user.username,
-        trips=trips,
-        total_trips=total_trips,
-        total_distance=total_distance,
-        driving_hours=driving_hours,
-        vehicle=vehicle,
-        current_trip=current_trip,
-        reports=reports
-    )
-
-# ========================= HELPER: SAVE DETECTION REPORT =========================
-def save_detection_report(driver_id, detection_type, status):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO driver_detection_reports (driver_id,detection_type,status,timestamp) "
-        "VALUES (%s,%s,%s,%s)",
-        (driver_id,detection_type,status,datetime.now())
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-# ========================= LEGACY DETECTION (DEPRECATED) =========================
-# These endpoints used to classify single uploaded frames with whole-image
-# models and returned "safe"/"sober" verdicts. They are retired: the models
-# were never present in the repository, single frames were sent over HTTP,
-# and the dashboard showed "Safe" for any response it did not recognise.
-# They now answer 410 Gone without running any model or saving a report.
-@routes.route("/upload_image", methods=["POST"])
-@routes.route("/live_detect", methods=["POST"])
-@login_required
-def legacy_detection():
-    return jsonify({"status": "deprecated", "message": LEGACY_DETECTION_MESSAGE}), 410
-
-# ========================= DRIVER REPORTS JSON =========================
-@routes.route('/driver/reports_json')
-@login_required
-def driver_reports_json():
-    if not current_user.is_driver():
-        return jsonify([])
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT timestamp,detection_type,status FROM driver_detection_reports "
-        "WHERE driver_id=%s ORDER BY timestamp DESC LIMIT 10",
-        (current_user.id,)
-    )
-    reports = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    for r in reports:
-        if isinstance(r['timestamp'], datetime):
-            r['timestamp'] = r['timestamp'].strftime('%d/%m/%Y %H:%M:%S')
-
-    return jsonify(reports)
+    counts = {role: sum(1 for u in users if u['role'] == role) for role in ROLES}
+    from .assistance_service import admin_overview
+    return render_template('admin-dashboard.html', users=users, cooperatives=cooperatives,
+                           counts=counts, roles=ROLES, assistance=admin_overview())
 
 
-# ========================= UPDATE USER ROLE =========================
-@routes.route('/update_role', methods=['POST'])
-@login_required
-def update_role():
-    if not current_user.is_admin():
-        flash("⚠️ Access denied.", "danger")
-        return redirect(url_for("routes.home"))
+@routes.route('/admin/cooperatives', methods=['POST'])
+@roles_required(ROLE_ADMIN)
+def create_cooperative():
+    """Create a cooperative. With a manager it is ACTIVE; without one it is kept as an inactive draft
+    (not offered at registration) until an administrator assigns a manager and activates it."""
+    back = request.form.get("next") or ""
+    back = back if back.startswith("/admin") and not back.startswith("//") else url_for('routes.admin_dashboard')
+    name = (request.form.get('name') or "").strip()
+    code = (request.form.get('code') or "").strip().upper()
+    district = (request.form.get('district') or "").strip() or None
+    manager_raw = (request.form.get('manager_id') or "").strip()
+    if not 3 <= len(name) <= 120 or not _COOP_CODE.match(code) or (district and len(district) > 80):
+        flash("Enter a name (3–120 characters) and a code of 2–20 letters, digits or dashes.", "danger")
+        return redirect(back)
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("INSERT INTO cooperatives (name, code, district, status, created_by) "
+                           "VALUES (%s, %s, %s, 'SUSPENDED', %s)", (name, code, district, current_user.id))
+            coop_id = cursor.lastrowid
+            audit.record(audit.COOPERATIVE_CREATED, actor_id=current_user.id, target_type="cooperative",
+                         target_id=coop_id, cooperative_id=coop_id, details={"code": code}, cursor=cursor)
+    except pymysql.err.IntegrityError:
+        flash("A cooperative with this name or code already exists.", "danger")
+        return redirect(back)
+    if not manager_raw:
+        flash(f"Cooperative {name} saved as an inactive draft. Assign a manager, then activate it.", "warning")
+        return redirect(url_for('coop.cooperative', coop_id=coop_id))
+    from .cooperative_service import assign_manager, update_cooperative
+    try:
+        assign_manager(int(current_user.id), coop_id, manager_raw)
+        update_cooperative(int(current_user.id), coop_id, name, district, "APPROVED")
+    except AssistanceError as exc:
+        flash(f"Cooperative {name} saved as an inactive draft: {exc.message}", "warning")
+    else:
+        flash(f"Cooperative {name} created and active.", "success")
+    return redirect(url_for('coop.cooperative', coop_id=coop_id))
 
-    user_id = request.form.get('user_id')
+
+def _other_admins(cursor, user_id):
+    cursor.execute("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND is_active=1 AND id<>%s", (user_id,))
+    return cursor.fetchone()["n"]
+
+
+@routes.route('/admin/update-member', methods=['POST'])
+@roles_required(ROLE_ADMIN)
+def update_member():
+    """Set a user's role and cooperative. Admin assignment approves the membership."""
+    try:
+        user_id = int(request.form.get('user_id', ''))
+    except ValueError:
+        user_id = None
     new_role = request.form.get('role')
+    coop_raw = request.form.get('cooperative_id') or ""
 
-    if not user_id or new_role not in ['driver', 'chef', 'admin']:
-        flash("❌ Invalid data.", "danger")
+    if user_id is None or new_role not in ROLES:
+        flash("Invalid request.", "danger")
+        return redirect(url_for('routes.admin_dashboard'))
+    if user_id == int(current_user.id):
+        flash("You cannot change your own role.", "warning")
         return redirect(url_for('routes.admin_dashboard'))
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    if int(user_id) == int(current_user.id):
-        flash("⚠️ You cannot change your own role.", "warning")
-        cursor.close()
-        conn.close()
-        return redirect(url_for('routes.admin_dashboard'))
+    with db_cursor() as cursor:
+        cursor.execute("SELECT id, role FROM users WHERE id=%s FOR UPDATE", (user_id,))
+        target = cursor.fetchone()
+        if target is None:
+            flash("User not found.", "danger")
+            return redirect(url_for('routes.admin_dashboard'))
+        if target["role"] == ROLE_ADMIN and new_role != ROLE_ADMIN and _other_admins(cursor, user_id) == 0:
+            flash("At least one administrator must remain.", "warning")
+            return redirect(url_for('routes.admin_dashboard'))
 
-    cursor.execute("UPDATE users SET role=%s WHERE id=%s", (new_role, user_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
+        coop_id = None
+        if new_role in MEMBER_ROLES:
+            cursor.execute("SELECT id FROM cooperatives WHERE id=%s AND status='APPROVED'",
+                           (int(coop_raw) if coop_raw.isdigit() else -1,))
+            row = cursor.fetchone()
+            if row is None:
+                flash("Drivers, Umusare and managers must be assigned to an approved cooperative.", "danger")
+                return redirect(url_for('routes.admin_dashboard'))
+            coop_id = row["id"]
+            cursor.execute(
+                "INSERT INTO cooperative_memberships (user_id, cooperative_id, member_role, status, "
+                "reviewed_by, reviewed_at) VALUES (%s, %s, %s, 'APPROVED', %s, %s) "
+                "ON DUPLICATE KEY UPDATE group_id=IF(cooperative_id=VALUES(cooperative_id), group_id, NULL), "
+                "cooperative_id=VALUES(cooperative_id), member_role=VALUES(member_role), "
+                "status='APPROVED', reviewed_by=VALUES(reviewed_by), reviewed_at=VALUES(reviewed_at)",
+                (user_id, coop_id, new_role, current_user.id, _utcnow()))
+            if new_role == ROLE_DRIVER:
+                cursor.execute("INSERT IGNORE INTO driver_profiles (user_id) VALUES (%s)", (user_id,))
+            elif new_role == ROLE_UMUSARE:
+                # New Umusare start unverified; verification is a separate manager decision.
+                cursor.execute("INSERT IGNORE INTO umusare_profiles (user_id) VALUES (%s)", (user_id,))
+        else:
+            # Administrators are platform staff, not cooperative members.
+            cursor.execute("UPDATE cooperative_memberships SET status='REVOKED', reviewed_by=%s, reviewed_at=%s "
+                           "WHERE user_id=%s", (current_user.id, _utcnow(), user_id))
 
-    flash(f"✅ User role updated to {new_role}.", "success")
+        cursor.execute("UPDATE users SET role=%s WHERE id=%s", (new_role, user_id))
+        audit.record(audit.ROLE_CHANGED, actor_id=current_user.id, target_type="user", target_id=user_id,
+                     cooperative_id=coop_id, details={"from": target["role"], "to": new_role}, cursor=cursor)
+
+    flash(f"User updated: role {new_role}.", "success")
     return redirect(url_for('routes.admin_dashboard'))
 
-# ========================= DELETE USER =========================
-@routes.route('/delete_user', methods=['POST'])
-@login_required
+
+@routes.route('/admin/delete-user', methods=['POST'])
+@roles_required(ROLE_ADMIN)
 def delete_user():
-    if not current_user.is_admin():
-        flash("⚠️ Access denied.", "danger")
-        return redirect(url_for("routes.home"))
-
-    user_id = request.form.get('user_id')
-    if not user_id or int(user_id) == int(current_user.id):
-        flash("⚠️ Invalid request or cannot delete yourself.", "danger")
+    try:
+        user_id = int(request.form.get('user_id', ''))
+    except ValueError:
+        user_id = None
+    if user_id is None or user_id == int(current_user.id):
+        flash("Invalid request or you cannot delete yourself.", "danger")
         return redirect(url_for('routes.admin_dashboard'))
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE id=%s", (user_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    with db_cursor() as cursor:
+        cursor.execute("SELECT role FROM users WHERE id=%s FOR UPDATE", (user_id,))
+        target = cursor.fetchone()
+        if target is None:
+            flash("User not found.", "danger")
+            return redirect(url_for('routes.admin_dashboard'))
+        if target["role"] == ROLE_ADMIN and _other_admins(cursor, user_id) == 0:
+            flash("At least one administrator must remain.", "warning")
+            return redirect(url_for('routes.admin_dashboard'))
+        audit.record(audit.USER_DELETED, actor_id=current_user.id, target_type="user", target_id=user_id,
+                     details={"role": target["role"]}, cursor=cursor)
+        cursor.execute("DELETE FROM users WHERE id=%s", (user_id,))
 
-    flash("✅ User removed successfully.", "success")
+    flash("User removed.", "success")
     return redirect(url_for('routes.admin_dashboard'))
+
+
+# ========================= MANAGER =========================
+@routes.route('/manager-dashboard')
+@roles_required(ROLE_MANAGER)
+def manager_dashboard():
+    """Operational console for the manager's OWN cooperative only (scope from the database)."""
+    from .cooperative_service import manager_console
+    with db_cursor() as cursor:
+        membership = _membership(cursor, current_user.id)
+    console = manager_console(current_user.id)
+    return render_template('manager-dashboard.html', membership=membership, console=console)
+
+
+# ========================= DRIVER =========================
+@routes.route('/driver-dashboard')
+@roles_required(ROLE_DRIVER)
+def driver_dashboard():
+    from .driver_views import dashboard_context
+    with db_cursor() as cursor:
+        membership = _membership(cursor, current_user.id)
+    ctx = dashboard_context(current_user.id)
+    return render_template('driver-dashboard.html', membership=membership, vstate=ctx["vstate"], ctx=ctx)
+
+
+# ========================= UMUSARE =========================
+@routes.route('/umusare-dashboard')
+@roles_required(ROLE_UMUSARE)
+def umusare_dashboard():
+    with db_cursor() as cursor:
+        membership = _membership(cursor, current_user.id)
+        cursor.execute("SELECT verification_status, availability FROM umusare_profiles WHERE user_id=%s",
+                       (current_user.id,))
+        profile = cursor.fetchone()
+        cursor.execute("SELECT phone FROM users WHERE id=%s", (current_user.id,))
+        phone = (cursor.fetchone() or {}).get("phone")
+    from .badges import for_user
+    from .cooperative_service import own_verification
+    return render_template('umusare-dashboard.html', membership=membership, profile=profile, current_user_phone=phone,
+                           vstate=own_verification(current_user.id), badge=for_user(current_user.id))

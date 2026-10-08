@@ -1,0 +1,81 @@
+{
+  "source": "AlcoholDetectionDataset",
+  "label_type": "dataset_label_unverified",
+  "total_images": 394,
+  "readable_images": 394,
+  "corrupt_images": [],
+  "images_per_class": {
+    "non_alcoholic": 197,
+    "alcoholic": 197
+  },
+  "formats": {
+    "png": 394
+  },
+  "resolutions": {
+    "227x227": 394
+  },
+  "exact_duplicate_files": 0,
+  "exact_duplicates_in_usable_set": 0,
+  "subject_metadata": "none (no subject or session identifiers in the dataset)",
+  "sessions": "one continuous recording per class (frame-number sequences, near-identical frames)",
+  "face_detection": {
+    "ok": 394
+  },
+  "quality": {
+    "ok": 394
+  },
+  "quality_rejection_reasons": {},
+  "split_counts": {
+    "train": {
+      "non_alcoholic": 133,
+      "alcoholic": 133
+    },
+    "val": {
+      "non_alcoholic": 19,
+      "alcoholic": 19
+    },
+    "test": {
+      "non_alcoholic": 25,
+      "alcoholic": 25
+    },
+    "buffer": {
+      "non_alcoholic": 20,
+      "alcoholic": 20
+    },
+    "excluded": {}
+  },
+  "split_method": "per-class contiguous blocks in recording order (0.7, 0.15, 0.15), 5 frames dropped at each boundary",
+  "nearest_dhash_bits_val_to_train": 0,
+  "nearest_dhash_bits_test_to_train": 0,
+  "class_mean_image_statistics_of_crops": {
+    "non_alcoholic": {
+      "brightness": 106.28,
+      "contrast": 73.46,
+      "mean_r": 121.61,
+      "mean_g": 101.41,
+      "mean_b": 91.13,
+      "lab_a": 134.78,
+      "lab_b": 137.05,
+      "border_ring_brightness": 123.68,
+      "sharpness": 263.68
+    },
+    "alcoholic": {
+      "brightness": 86.8,
+      "contrast": 51.56,
+      "mean_r": 114.99,
+      "mean_g": 77.7,
+      "mean_b": 59.68,
+      "lab_a": 141.59,
+      "lab_b": 145.23,
+      "border_ring_brightness": 98.37,
+      "sharpness": 83.01
+    }
+  },
+  "shortcut_probe_test_accuracy": {
+    "brightness_only": 0.92,
+    "colour_statistics": 1.0,
+    "border_ring_only": 0.94,
+    "sharpness_only": 1.0,
+    "all_image_statistics": 1.0
+  }
+}

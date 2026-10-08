@@ -1,0 +1,36 @@
+{
+  "dataset": "AlcoholDetectionDataset",
+  "split": "test",
+  "n": 50,
+  "selected_stage": "head",
+  "arch": "mobilenet_v3_small",
+  "metrics": {
+    "n": 50,
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "sensitivity_positive": 1.0,
+    "specificity_negative": 1.0,
+    "f1": 1.0,
+    "false_positive_rate": 0.0,
+    "false_negative_rate": 0.0,
+    "confusion_matrix": [
+      [
+        25,
+        0
+      ],
+      [
+        0,
+        25
+      ]
+    ],
+    "threshold": 0.5,
+    "roc_auc": 1.0
+  },
+  "latency_ms_cpu": {
+    "mean": 20.61,
+    "p95": 25.65
+  },
+  "model_file_mb": 6.2,
+  "interpretation": "Test frames come from later parts of the SAME two recordings used for training (one person per class). These numbers measure separation of those two recordings, which image statistics alone already achieve (see data/processed/alcohol_v1/audit). They are not evidence of detecting alcohol in new people and never a BAC measurement."
+}

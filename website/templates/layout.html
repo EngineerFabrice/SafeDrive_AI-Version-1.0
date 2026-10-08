@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{% block title %}SafeDrive AI{% endblock %} · SafeDrive AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+{% block head %}{% endblock %}
+<style>
+:root {
+    --primary:#4f46e5; --success:#10b981; --warning:#f59e0b; --danger:#ef4444;
+    --bg-light:#f3f4f6; --border:#e5e7eb; --text-dark:#1f2937; --text-light:#6b7280;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+[hidden] { display:none !important; }   /* component display rules (.btn, flex rows) must never un-hide elements */
+body { display:flex; min-height:100vh; background:var(--bg-light); color:var(--text-dark); }
+
+/* Sidebar (same pattern as the monitoring page) */
+.sidebar { width:250px; background:#fff; border-right:1px solid var(--border); padding:20px; display:flex; flex-direction:column; flex-shrink:0; }
+.sidebar h2 { margin-bottom:6px; font-size:24px; color:var(--primary); }
+.sidebar .role { font-size:12px; font-weight:600; letter-spacing:.06em; color:var(--text-light); margin-bottom:24px; text-transform:uppercase; }
+.sidebar a, .sidebar form button { display:flex; align-items:center; width:100%; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; border:none; background:none; font-size:inherit; text-align:left; cursor:pointer; }
+.sidebar a:hover, .sidebar form button:hover { background:var(--bg-light); }
+.sidebar a.active { background:var(--primary); color:#fff; }
+.sidebar .spacer { flex:1; }
+
+.main { flex:1; padding:24px 32px; overflow-y:auto; max-width:1200px; }
+.page-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+.page-head h1 { font-size:24px; }
+.page-head .who { color:var(--text-light); font-size:14px; }
+
+.flash { padding:12px 16px; border-radius:10px; margin-bottom:14px; font-size:14px; }
+.flash.success { background:#ecfdf5; color:#065f46; } .flash.danger { background:#fef2f2; color:#991b1b; }
+.flash.warning { background:#fffbeb; color:#92400e; } .flash.info { background:#eef2ff; color:#3730a3; }
+
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:16px; margin-bottom:24px; }
+.card { background:#fff; padding:18px 20px; border-radius:14px; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
+.card h3 { font-size:13px; color:var(--text-light); margin-bottom:8px; font-weight:600; }
+.card .value { font-size:24px; font-weight:700; }
+.panel { background:#fff; border-radius:14px; box-shadow:0 4px 15px rgba(0,0,0,0.05); padding:20px; margin-bottom:24px; }
+.panel h2 { font-size:17px; margin-bottom:12px; }
+.panel p { color:var(--text-light); line-height:1.55; }
+.muted { color:var(--text-light); font-size:13px; }
+
+.badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; background:var(--bg-light); color:var(--text-dark); }
+.badge.ok { background:#ecfdf5; color:#065f46; } .badge.warn { background:#fffbeb; color:#92400e; }
+.badge.bad { background:#fef2f2; color:#991b1b; } .badge.info { background:#eef2ff; color:#3730a3; }
+
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); vertical-align:middle; }
+thead th { background:var(--bg-light); font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-light); }
+
+.btn { display:inline-block; padding:9px 16px; border-radius:8px; border:none; cursor:pointer; font-weight:600; font-size:14px; text-decoration:none; }
+.btn-primary { background:var(--primary); color:#fff; } .btn-light { background:var(--bg-light); color:var(--text-dark); }
+.btn-danger { background:var(--danger); color:#fff; } .btn-sm { padding:6px 10px; font-size:13px; }
+form.inline { display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap; }
+select, input[type=text] { padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; background:#fff; }
+
+/* Verification state and manager contact (driver / Umusare dashboards) */
+.verify-panel { border-left:8px solid var(--warning); }
+.verify-panel.bad { border-left-color:var(--danger); }
+.verify-panel p { margin-bottom:6px; color:var(--text-dark); }
+.verify-note { background:var(--bg-light); border-radius:8px; padding:8px 12px; }
+.contact-card { border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-top:12px; background:#fafafa; }
+.contact-card h3 { font-size:15px; margin-bottom:8px; }
+.kv-contact { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px; }
+.kv-contact dt { color:var(--text-light); } .kv-contact dd { font-weight:600; word-break:break-word; }
+.contact-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.verified-line { margin:0 0 16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+/* Unread indicators and notifications */
+.nav-count { margin-left:auto; min-width:20px; padding:1px 7px; border-radius:999px; background:var(--danger); color:#fff; font-size:12px; font-weight:700; text-align:center; }
+.nav-count[hidden] { display:none; }
+.sidebar a.active .nav-count { background:#fff; color:var(--primary); }
+.head-right { display:flex; align-items:center; gap:12px; position:relative; }
+.bell { position:relative; background:#fff; border:1px solid var(--border); border-radius:999px; padding:6px 12px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-dark); }
+.bell .nav-count { position:absolute; top:-6px; right:-6px; margin:0; }
+.notif-pop { position:absolute; right:0; top:40px; width:320px; max-width:calc(100vw - 32px); background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); z-index:40; padding:8px; }
+.notif-pop[hidden] { display:none; }
+.notif-pop a, .notif-pop .empty { display:block; padding:8px 10px; border-radius:8px; color:var(--text-dark); text-decoration:none; font-size:13px; }
+.notif-pop a:hover { background:var(--bg-light); } .notif-pop a.unread { font-weight:700; }
+.notif-pop time { display:block; color:var(--text-light); font-size:11px; font-weight:400; }
+
+/* Account banners (email verification, Terms re-acceptance) */
+.acct-banner { display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:#fff;
+    border:1px solid var(--border); border-left:6px solid var(--warning); border-radius:12px; padding:12px 16px; margin-bottom:14px; }
+.acct-banner b { display:block; font-size:12px; letter-spacing:.08em; color:#92400e; }
+.acct-banner p { font-size:14px; color:var(--text-dark); margin:0; }
+.acct-banner form { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:13px; }
+/* SafeDrive blue verification badge */
+.sd-badge { position:relative; display:inline-flex; align-items:center; gap:5px; padding:3px 10px 3px 4px; border-radius:999px;
+    background:#e8f1fe; color:#0b57d0; font-size:12px; font-weight:800; letter-spacing:.04em; cursor:help; vertical-align:middle; }
+.sd-badge .sd-tick { width:18px; height:18px; border-radius:50%; background:#1a73e8; color:#fff; display:inline-flex;
+    align-items:center; justify-content:center; font-size:11px; }
+.sd-badge.off { background:var(--bg-light); color:var(--text-light); padding-left:9px; }
+.sd-pop { display:none; position:absolute; z-index:30; top:calc(100% + 8px); left:0; width:280px; max-width:80vw; background:#fff;
+    color:var(--text-dark); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.14); padding:12px 14px;
+    font-weight:400; letter-spacing:0; text-transform:none; }
+.sd-badge:hover .sd-pop, .sd-badge:focus .sd-pop, .sd-badge:focus-within .sd-pop { display:block; }
+.sd-pop b { font-size:13px; color:#0b57d0; }
+.sd-list { display:flex; flex-direction:column; gap:3px; margin:8px 0; font-size:13px; }
+.sd-list .ok { color:#146c43; } .sd-list .no { color:var(--text-light); }
+.sd-pop small { color:var(--text-light); font-size:11px; line-height:1.4; display:block; }
+.state-chip { display:inline-flex; flex-direction:column; gap:1px; padding:6px 10px; border-radius:10px; background:var(--bg-light); min-width:96px; }
+.state-chip .k { font-size:10px; font-weight:700; letter-spacing:.08em; color:var(--text-light); text-transform:uppercase; }
+.state-chip .v { font-size:13px; font-weight:700; }
+.state-chip.good { background:#ecfdf5; } .state-chip.good .v { color:#065f46; }
+.state-chip.pending .v { color:#92400e; }
+
+@media (max-width: 800px) {
+    body { flex-direction:column; }
+    .sidebar { width:100%; flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px; padding:12px 16px; border-right:none; border-bottom:1px solid var(--border); }
+    .sidebar h2 { margin:0 12px 0 0; font-size:20px; } .sidebar .role, .sidebar .spacer { display:none; }
+    .sidebar a, .sidebar form button { width:auto; margin:0; padding:8px 10px; }
+    .main { padding:16px; }
+}
+{% block styles %}{% endblock %}
+</style>
+</head>
+<body>
+<nav class="sidebar" aria-label="Main">
+    <h2>SafeDrive AI</h2>
+    <div class="role">{{ current_user.role }}</div>
+    {% set ep = request.endpoint %}
+    {% set msg_link %}<a href="{{ url_for('chat.page') }}" class="{{ 'active' if ep == 'chat.page' }}">Messages<span class="nav-count" data-unread="messages" hidden></span></a>{% endset %}
+    {% if current_user.is_admin() %}
+        <a href="{{ url_for('routes.admin_dashboard') }}" class="{{ 'active' if ep == 'routes.admin_dashboard' }}">Administration</a>
+        <a href="{{ url_for('coop.cooperatives') }}" class="{{ 'active' if ep in ('coop.cooperatives', 'coop.cooperative') }}">Cooperatives</a>
+        <a href="{{ url_for('coop.verification') }}" class="{{ 'active' if ep == 'coop.verification' }}">Verification</a>
+        <a href="{{ url_for('admin_mgmt.drivers') }}" class="{{ 'active' if ep in ('admin_mgmt.drivers', 'admin_mgmt.driver_detail') }}">Drivers</a>
+        <a href="{{ url_for('admin_mgmt.umusare') }}" class="{{ 'active' if ep == 'admin_mgmt.umusare' }}">Umusare</a>
+        <a href="{{ url_for('admin_mgmt.assistance') }}" class="{{ 'active' if ep == 'admin_mgmt.assistance' }}">Assistance</a>
+        <a href="{{ url_for('admin_mgmt.pricing') }}" class="{{ 'active' if ep == 'admin_mgmt.pricing' }}">Pricing</a>
+        <a href="{{ url_for('monitoring.dashboard') }}">Monitoring (research view)</a>
+        {{ msg_link }}
+    {% elif current_user.is_manager() %}
+        <a href="{{ url_for('routes.manager_dashboard') }}" class="{{ 'active' if ep in ('routes.manager_dashboard', 'coop.member') }}">Cooperative</a>
+        {{ msg_link }}
+    {% elif current_user.is_umusare() %}
+        <a href="{{ url_for('routes.umusare_dashboard') }}" class="{{ 'active' if ep == 'routes.umusare_dashboard' }}">Home</a>
+        {{ msg_link }}
+    {% else %}
+        <a href="{{ url_for('routes.driver_dashboard') }}" class="{{ 'active' if ep == 'routes.driver_dashboard' }}">Home</a>
+        <a href="{{ url_for('monitoring.dashboard') }}">Monitoring</a>
+        {{ msg_link }}
+    {% endif %}
+    <div class="spacer"></div>
+    <form method="POST" action="{{ url_for('routes.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Sign out</button>
+    </form>
+</nav>
+
+<main class="main">
+    <div class="page-head">
+        <h1>{% block heading %}{% endblock %}</h1>
+        <div class="head-right">
+            <button type="button" class="bell" id="notif-bell" aria-haspopup="true" aria-expanded="false"
+                    aria-controls="notif-pop">Notifications<span class="nav-count" data-unread="notifications" hidden></span></button>
+            <div class="notif-pop" id="notif-pop" hidden role="menu" aria-label="Notifications"></div>
+            <span class="who">{{ current_user.username }}</span>
+        </div>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="flash {{ category }}" role="status">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    {% block account_banners %}
+    {% if current_user.is_authenticated and not current_user.email_verified %}
+    <div class="acct-banner" role="status" id="email-banner">
+        <div><b>EMAIL VERIFICATION REQUIRED</b><p>Please verify your email address to continue.</p></div>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('account.verify_email') }}">Verify email</a>
+    </div>
+    {% endif %}
+    {% if needs_terms_acceptance %}
+    <div class="acct-banner" role="status" id="terms-banner">
+        <div><b>TERMS &amp; PRIVACY</b><p>Please review and accept the current SafeDrive AI Terms &amp; Conditions (v{{ legal_versions.terms }})
+            and Privacy Policy (v{{ legal_versions.privacy }}).</p></div>
+        <form method="POST" action="{{ url_for('account.accept_terms') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <label><input type="checkbox" name="accept_terms" value="1" required> I have read and agree to the
+                <a href="{{ url_for('account.terms') }}" target="_blank" rel="noopener">Terms</a> and
+                <a href="{{ url_for('account.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a></label>
+            <button class="btn btn-light btn-sm" type="submit">Accept</button>
+        </form>
+    </div>
+    {% endif %}
+    {% endblock %}
+    {% block content %}{% endblock %}
+</main>
+<script>window.SAFEDRIVE_CHAT = {unread: "{{ url_for('chat.unread') }}", notifications: "{{ url_for('chat.notifications') }}",
+    read: "{{ url_for('chat.notifications_read') }}"};</script>
+<script src="{{ url_for('static', filename='js/notify.js') }}" defer></script>
+</body>
+</html>

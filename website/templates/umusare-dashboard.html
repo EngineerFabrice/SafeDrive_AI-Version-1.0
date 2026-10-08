@@ -1,0 +1,356 @@
+{% extends "layout.html" %}
+{% from "_badge.html" import sd_badge %}
+{% block title %}Umusare{% endblock %}
+{% block heading %}Umusare{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+<script>window.SAFEDRIVE_TILES = {{ maps.tiles | tojson }};</script>
+<script src="{{ url_for('static', filename='js/assist-map.js') }}" defer></script>
+{% endblock %}
+{% block styles %}
+/* Availability ON/OFF switch (the server's availability is the only source of truth) */
+.avail-row { display:flex; align-items:center; gap:12px; margin-top:6px; flex-wrap:wrap; }
+.avail-switch { position:relative; display:inline-flex; align-items:center; width:74px; height:36px; border-radius:999px; border:none;
+    background:#d1d5db; cursor:pointer; padding:0 10px; justify-content:flex-end; transition:background .15s; flex-shrink:0; }
+.avail-switch .avail-knob { position:absolute; left:4px; top:4px; width:28px; height:28px; border-radius:50%; background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .15s; }
+.avail-switch .avail-switch-text { font-size:12px; font-weight:800; color:#374151; letter-spacing:.06em; }
+.avail-switch.on { background:var(--success); justify-content:flex-start; }
+.avail-switch.on .avail-knob { left:42px; } .avail-switch.on .avail-switch-text { color:#fff; }
+.avail-switch:focus-visible { outline:3px solid var(--primary); outline-offset:2px; }
+.avail-switch:disabled { cursor:not-allowed; opacity:.6; }
+.avail-switch[aria-busy="true"] { opacity:.7; cursor:progress; }
+.avail-state { font-size:16px; font-weight:800; color:var(--text-light); letter-spacing:.03em; }
+.avail-state.on { color:#065f46; }
+.avail-msg { font-size:13px; color:var(--text-dark); margin-top:8px; line-height:1.45; }
+.req { border-left:8px solid var(--danger); }
+.req h2, .active h2, .pay h2 { font-size:18px; margin-bottom:8px; }
+.active { border-left:8px solid var(--success); }
+.pay { border-left:8px solid var(--primary); }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px; margin:8px 0; }
+.kv dt { color:var(--text-light); } .kv dd { font-weight:600; }
+.actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+.grid2 { display:grid; grid-template-columns:minmax(240px, 1fr) minmax(260px, 1.3fr); gap:16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns:1fr; } }
+.map-box { height:260px; border-radius:12px; border:1px solid var(--border); }
+.legend { font-size:12px; color:var(--text-light); margin-top:6px; }
+.legend b.d { color:#2563eb; } .legend b.u { color:#16a34a; }
+.amount { font-size:24px; font-weight:800; }
+.k { font-size:11px; font-weight:700; letter-spacing:.12em; color:var(--text-light); }
+{% endblock %}
+{% block content %}
+{% set verification = profile.verification_status if profile else "PENDING" %}
+<div class="cards">
+    <div class="card">
+        <h3>Cooperative</h3>
+        <div class="value" style="font-size:18px;">{{ membership.cooperative_name if membership else "Not assigned" }}</div>
+        {% if membership %}<span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(membership.membership_status, 'bad') }}">{{ membership.membership_status }}</span>{% endif %}
+    </div>
+    <div class="card">
+        <h3>Verification</h3>
+        <div class="value" style="font-size:18px;">
+            <span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(verification, 'bad') }}">{{ "✓ VERIFIED" if verification == "VERIFIED" else verification }}</span>
+        </div>
+        <span class="muted">Umusare ID UMS-{{ '%05d' % current_user.id }}</span>
+        <div style="margin-top:6px;">{{ sd_badge(badge) }}</div>
+    </div>
+    {% set avail = (profile.availability if profile else "OFFLINE") or "OFFLINE" %}
+    {% set can_switch = verification == "VERIFIED" and membership and membership.membership_status == "APPROVED" %}
+    <div class="card avail-card" id="avail-card">
+        <h3 id="avail-label">Availability</h3>
+        <div class="avail-row">
+            <button type="button" class="avail-switch {{ 'on' if avail != 'OFFLINE' }}" id="avail-switch" role="switch"
+                    aria-checked="{{ 'true' if avail != 'OFFLINE' else 'false' }}" aria-labelledby="avail-label avail-state"
+                    aria-describedby="avail-msg" {{ 'disabled' if not can_switch or avail == 'BUSY' }}>
+                <span class="avail-knob" aria-hidden="true"></span>
+                <span class="avail-switch-text" id="avail-switch-text">{{ 'ON' if avail != 'OFFLINE' else 'OFF' }}</span>
+            </button>
+            <span class="avail-state {{ 'on' if avail != 'OFFLINE' }}" id="avail-state">{{ {'AVAILABLE': 'AVAILABLE', 'BUSY': 'ASSISTING'}.get(avail, 'NOT AVAILABLE') }}</span>
+        </div>
+        <p class="avail-msg" id="avail-msg">
+            {% if not can_switch %}Availability can be switched on after your cooperative verifies your account.
+            {% elif avail == "AVAILABLE" %}You are available to receive assistance requests.
+            {% elif avail == "BUSY" %}You are assisting a driver. You can switch off after the journey is completed.
+            {% else %}You are not available to receive assistance requests.{% endif %}</p>
+        {% if can_switch %}<p class="muted" style="margin-top:6px;">While ON, your position is shared with SafeDrive only to match nearby requests.</p>{% endif %}
+    </div>
+    <div class="card">
+        <h3>Payment phone</h3>
+        <div class="value" style="font-size:16px;" id="my-phone">{{ current_user_phone or "Not set" }}</div>
+        <form class="inline" id="phone-form" style="margin-top:6px;">
+            <input type="text" id="phone-input" placeholder="+250 78X XXX XXX" aria-label="Your phone number" style="width:150px;">
+            <button class="btn btn-light btn-sm" type="submit">Save</button>
+        </form>
+        <span class="muted">Drivers pay to this number after a journey.</span>
+    </div>
+</div>
+<p class="muted" id="error" role="alert" style="margin-bottom:12px;"></p>
+
+{% if verification != "VERIFIED" %}
+{% with member_kind="umusare" %}{% include "_verification_panel.html" %}{% endwith %}
+<p class="muted" style="margin:-12px 0 24px;">Registering does not make you an eligible Umusare. Your cooperative manager must
+   review and verify your application before you can receive assistance requests.</p>
+{% else %}
+<div id="payments"></div>
+<div id="active"></div>
+<div id="incoming"></div>
+<section class="panel" id="idle">
+    <h2>No assistance requests</h2>
+    <p id="idle-text">Go available to receive safety assistance requests from nearby drivers, including drivers from other cooperatives.</p>
+</section>
+<div id="last"></div>
+{% endif %}
+
+<script>
+(() => {
+    const $ = id => document.getElementById(id);
+    const token = document.querySelector('meta[name="csrf-token"]').content;
+    const PHONE = "{{ url_for('assistance.my_phone') }}";
+
+    async function api(url, method = "GET", body) {
+        let res;
+        try {
+            res = await fetch(url, { method, cache: "no-store", credentials: "same-origin",
+                headers: { "Accept": "application/json", "Content-Type": "application/json", "X-CSRFToken": token },
+                body: body ? JSON.stringify(body) : undefined });
+        } catch (e) { throw new Error("Cannot reach SafeDrive. Check your connection and try again."); }
+        if (res.redirected && res.url.includes("/login")) throw new Error("Your session has expired. Please sign in again.");
+        const data = (res.headers.get("Content-Type") || "").includes("application/json") ? await res.json().catch(() => null) : null;
+        if (!res.ok) {
+            const msg = data && data.error;
+            if (msg && /csrf/i.test(msg)) throw new Error("Security check failed (CSRF token). Reload the page and try again.");
+            throw new Error(msg || "Request failed (HTTP " + res.status + ").");
+        }
+        if (data === null) throw new Error("Unexpected response from the server (HTTP " + res.status + ").");
+        return data;
+    }
+    $("phone-form").addEventListener("submit", async ev => {
+        ev.preventDefault(); $("error").textContent = "";
+        try { $("my-phone").textContent = (await api(PHONE, "POST", { phone: $("phone-input").value })).phone; $("phone-input").value = ""; }
+        catch (e) { $("error").textContent = e.message; }
+    });
+
+    if (!$("incoming")) return;                                  // not verified: nothing to poll
+    const STATUS = "{{ url_for('assistance.umusare_status') }}";
+    const AVAIL = "{{ url_for('assistance.availability') }}";
+    const R = "{{ url_for('assistance.create') }}";
+    let state = null, watchId = null, lastSent = 0, timer = null;
+    const maps = {};                                             // one Leaflet map per container id
+
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const time = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+    const km = v => v === null || v === undefined ? "—" : Number(v).toFixed(v < 10 ? 2 : 1) + " km";
+
+    function drawMap(id, points) {
+        const el = $(id);
+        if (!el) return;
+        if (!window.SafeMap || !window.L) {          // not loaded (yet) or blocked: text fallback, retry next poll
+            el.hidden = true;
+            const fb = $(id + "-fb"); if (fb) fb.hidden = false;
+            return;
+        }
+        if (!maps[id] || maps[id].el !== el) {
+            if (maps[id]) maps[id].map.destroy();
+            el.hidden = false; const fb = $(id + "-fb"); if (fb) fb.hidden = true;
+            maps[id] = { el, map: window.SafeMap(el) };
+        }
+        maps[id].map.update(points);
+    }
+    // Rebuild a section's skeleton (and its map) only when what it shows changes identity.
+    function section(container, key, html) {
+        const c = $(container);
+        if (c.dataset.key === key) return false;
+        Object.keys(maps).forEach(id => { if (c.contains(maps[id].el)) { maps[id].map.destroy(); delete maps[id]; } });
+        c.innerHTML = html; c.dataset.key = key;
+        return true;
+    }
+    function directions(p) {
+        return '<a class="btn btn-light" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' +
+               p.lat + "," + p.lon + '">NAVIGATE</a>';
+    }
+
+    function render(s) {
+        state = s;
+        const a = s.profile.availability || "OFFLINE";
+        renderSwitch(a);
+
+        // Payments waiting for my confirmation (amounts are server-calculated)
+        $("payments").innerHTML = s.payments.map(p => `
+            <section class="panel pay">
+                <h2>${p.status === "PAYMENT_SENT" ? "PAYMENT RECEIVED?" : p.status === "PAYMENT_DISPUTED" ? "PAYMENT PROBLEM REPORTED" : "WAITING FOR PAYMENT"}</h2>
+                <dl class="kv">
+                    <dt>Driver</dt><dd>${esc(p.driver_name)}</dd>
+                    <dt>Amount</dt><dd class="amount">${esc(p.amount_label)}</dd>
+                    <dt>Journey</dt><dd>${km(p.final_distance_km)} × ${esc(p.rate_label)}</dd>
+                    <dt>Pay-to number</dt><dd>${esc(p.pay_to_phone || "Not registered — set your payment phone above")}</dd>
+                    <dt>Status</dt><dd>${p.status === "PAYMENT_SENT" ? "Payment sent by driver at " + time(p.sent_at) + " — check your Mobile Money"
+                        : p.status === "PAYMENT_DISPUTED" ? "You reported: " + esc(p.dispute_note) : "Driver has not paid yet"}</dd>
+                    <dt>Assistance ID</dt><dd>${esc(p.assistance_id)}</dd>
+                </dl>
+                ${p.status === "PAYMENT_PENDING" ? "" : `<div class="actions">
+                    <button class="btn btn-primary" data-act="payment-received" data-id="${p.id}"
+                            data-confirm="Confirm you have RECEIVED ${esc(p.amount_label)}?">CONFIRM PAYMENT RECEIVED</button>
+                    ${p.status === "PAYMENT_SENT" ? `<button class="btn btn-light" data-act="payment-problem" data-id="${p.id}"
+                            data-confirm="Report that you have not received this payment?">REPORT PAYMENT PROBLEM</button>` : ""}
+                </div>`}
+            </section>`).join("");
+
+        // Incoming requests: approximate area, rounded distance, type and rate only
+        section("incoming", s.incoming.map(r => r.id).join(","), s.incoming.map(r => `
+            <section class="panel req">
+                <h2>NEW SAFETY ASSISTANCE</h2>
+                <div class="grid2">
+                    <dl class="kv">
+                        <dt>Request</dt><dd>${esc(r.type_label)}</dd>
+                        <dt>Reason</dt><dd>${esc(r.reason)}</dd>
+                        <dt>Requested</dt><dd>${time(r.created_at)}</dd>
+                        <dt>Distance</dt><dd>${esc(r.approx_distance)}</dd>
+                        <dt>Approximate area</dt><dd>${r.approx_area.lat.toFixed(2)}, ${r.approx_area.lon.toFixed(2)} (±1 km)</dd>
+                        <dt>Fare</dt><dd>${esc(r.fare.rate_label)}${r.fare.minimum_label ? " · minimum " + esc(r.fare.minimum_label) : ""}</dd>
+                    </dl>
+                    <div><div class="map-box" id="map-offer-${r.id}" data-fallback="map-offer-${r.id}-fb"></div>
+                        <p class="muted" id="map-offer-${r.id}-fb" hidden>Map unavailable.</p>
+                        <p class="legend">Approximate area only (±1 km). The exact location is shared after you accept.</p></div>
+                </div>
+                <p class="muted">${esc(r.fare.note)}.</p>
+                <div class="actions">
+                    <button class="btn btn-primary" data-act="accept" data-id="${r.id}">ACCEPT</button>
+                    <button class="btn btn-light" data-act="decline" data-id="${r.id}">DECLINE</button>
+                </div>
+            </section>`).join(""));
+        s.incoming.forEach(r => drawMap("map-offer-" + r.id, { approx: r.approx_area }));
+
+        // Accepted assistance: live locations of the driver and me
+        const x = s.active;
+        section("active", x ? x.id + ":" + x.status : "", x ? `
+            <section class="panel active">
+                <h2>${x.status === "ACCEPTED" ? "ASSISTANCE ACTIVE — go to the driver" : "● JOURNEY ACTIVE"}</h2>
+                <div class="grid2">
+                    <dl class="kv" id="active-info"></dl>
+                    <div><div class="map-box" id="map-active" data-fallback="map-active-fb"></div>
+                        <p class="muted" id="map-active-fb" hidden>Live map unavailable — use NAVIGATE.</p>
+                        <p class="legend"><b class="d">●</b> Driver &nbsp; <b class="u">●</b> You</p></div>
+                </div>
+                <div class="actions" id="active-actions"></div>
+                ${x.status === "DRIVER_CONNECTED" ? `<p class="muted">The fare shown is an estimate. The final fare is calculated by SafeDrive from the measured journey distance when you press COMPLETE JOURNEY.</p>` : ""}
+            </section>` : "");
+        if (x) {
+            $("active-info").innerHTML = `
+                <dt>Driver</dt><dd>${esc(x.driver.name)}</dd>
+                <dt>Phone</dt><dd>${x.driver.phone ? `<a href="tel:${esc(x.driver.phone)}">${esc(x.driver.phone)}</a>` : "—"}</dd>
+                <dt>Vehicle plate</dt><dd>${x.driver.vehicle_plate ? esc(x.driver.vehicle_plate) + (x.driver.vehicle ? " · " + esc(x.driver.vehicle) : "") : "Not provided"}</dd>
+                <dt>Request</dt><dd>${esc(x.type_label)}</dd>
+                <dt>Distance</dt><dd>${x.status === "ACCEPTED" ? km(x.distance_km) : "With the driver"}</dd>
+                ${x.eta_min ? `<dt>Estimated arrival</dt><dd>~${x.eta_min} min (estimate)</dd>` : ""}
+                <dt>Driver location</dt><dd>${x.driver_location ? "live, updated " + time(x.driver_location.updated_at) : "pickup point"}</dd>
+                ${x.journey ? `<dt>Journey so far</dt><dd>${km(x.journey.distance_so_far_km)}</dd>
+                    <dt>Estimated fare</dt><dd>${esc(x.journey.estimated_fare_label)} <span class="muted">(${esc(x.journey.rate_label)})</span></dd>`
+                    : `<dt>Rate</dt><dd>${esc(x.pricing.rate_label)}</dd>`}
+                <dt>Assistance ID</dt><dd>${esc(x.assistance_id)}</dd>`;
+            $("active-actions").innerHTML = `
+                ${directions(x.driver_location || x.pickup)}
+                ${x.status === "ACCEPTED" ? `<button class="btn btn-primary" data-act="connect" data-id="${x.id}">ARRIVED</button>` : ""}
+                ${x.status === "DRIVER_CONNECTED" ? `<button class="btn btn-primary" data-act="complete" data-id="${x.id}"
+                    data-confirm="Complete the journey now? SafeDrive will calculate the final distance and fare.">COMPLETE JOURNEY</button>` : ""}`;
+            drawMap("map-active", { driver: x.driver_location || x.pickup, umusare: x.my_location, approx: null });
+        }
+
+        const l = s.last_completed;
+        $("last").innerHTML = l && !x && !s.incoming.length && !s.payments.length ? `
+            <section class="panel"><h2>Last assistance ✓</h2>
+                <dl class="kv"><dt>Driver</dt><dd>${esc(l.driver_name)}</dd><dt>Journey</dt><dd>${km(l.final_distance_km)}</dd>
+                    <dt>Fare</dt><dd>${esc(l.amount_label)}</dd><dt>Payment</dt><dd>✓ COMPLETED</dd>
+                    <dt>Assistance ID</dt><dd>${esc(l.assistance_id)}</dd></dl></section>` : "";
+
+        $("idle").hidden = !!x || s.incoming.length > 0 || s.payments.length > 0;
+        $("idle-text").textContent = a === "AVAILABLE" ? "You are available. Waiting for nearby safety assistance requests…"
+            : "Go available to receive safety assistance requests from nearby drivers, including drivers from other cooperatives.";
+        if (a === "AVAILABLE" || a === "BUSY") startWatch(); else stopWatch();
+    }
+
+    // Position is sent only while AVAILABLE (every 60 s) or during an accepted assistance (every 10 s).
+    function startWatch() {
+        if (watchId !== null || !navigator.geolocation) return;
+        watchId = navigator.geolocation.watchPosition(p => {
+            if (!state) return;
+            const c = { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy };
+            const x = state.active, gap = x ? 10000 : 60000;
+            if (Date.now() - lastSent < gap) return;
+            lastSent = Date.now();
+            (x ? api(R + "/" + x.id + "/location", "POST", c)
+               : api(AVAIL, "POST", Object.assign({ available: true }, c))).catch(e => { $("error").textContent = e.message; });
+        }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+    }
+    function stopWatch() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } }
+
+    async function refresh() {
+        clearTimeout(timer);
+        try { render(await api(STATUS)); } catch (e) { $("error").textContent = e.message; }
+        timer = setTimeout(refresh, 3000);
+    }
+    function goAvailable() {
+        $("error").textContent = "";
+        if (!window.isSecureContext || !navigator.geolocation) {
+            return Promise.reject(new Error("Location needs a secure page (http://127.0.0.1 or HTTPS)."));
+        }
+        return new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(async p => {
+                try {
+                    await api(AVAIL, "POST", { available: true, lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy });
+                    lastSent = Date.now();
+                    resolve();
+                } catch (e) { reject(e); }
+            }, () => reject(new Error("Allow location access to switch availability ON and receive nearby requests.")),
+            { enableHighAccuracy: true, timeout: 20000 });
+        });
+    }
+    document.addEventListener("click", async ev => {
+        const b = ev.target.closest("[data-act]");
+        if (!b) return;
+        if (b.dataset.confirm && !confirm(b.dataset.confirm)) return;
+        $("error").textContent = "";
+        b.disabled = true;
+        let body;
+        if (b.dataset.act === "payment-problem") body = { note: prompt("What is the problem? (optional)", "Payment not received") || "" };
+        try { await api(R + "/" + b.dataset.id + "/" + b.dataset.act, "POST", body); } catch (e) { $("error").textContent = e.message; }
+        refresh();
+    });
+    // ON/OFF switch: shows only what the server reports; ON still has to pass every server-side eligibility check.
+    const AVAIL_TEXT = {
+        AVAILABLE: ["AVAILABLE", "You are available to receive assistance requests."],
+        BUSY: ["ASSISTING", "You are assisting a driver. You can switch off after the journey is completed."],
+        OFFLINE: ["NOT AVAILABLE", "You are not available to receive assistance requests."],
+    };
+    let switching = false;
+    function renderSwitch(a) {
+        const sw = $("avail-switch");
+        if (!sw || switching) return;
+        const on = a !== "OFFLINE", t = AVAIL_TEXT[a] || AVAIL_TEXT.OFFLINE;
+        sw.classList.toggle("on", on);
+        sw.setAttribute("aria-checked", on ? "true" : "false");
+        sw.disabled = a === "BUSY";
+        $("avail-switch-text").textContent = on ? "ON" : "OFF";
+        $("avail-state").textContent = t[0];
+        $("avail-state").classList.toggle("on", on);
+        $("avail-msg").textContent = t[1];
+    }
+    async function toggleAvailability() {
+        const sw = $("avail-switch");
+        if (switching || sw.disabled) return;
+        const turnOn = sw.getAttribute("aria-checked") !== "true";
+        switching = true; sw.setAttribute("aria-busy", "true"); $("error").textContent = "";
+        $("avail-msg").textContent = turnOn ? "Switching on… allow location access to receive nearby requests." : "Switching off…";
+        try {
+            if (turnOn) await goAvailable();
+            else { await api(AVAIL, "POST", { available: false }); stopWatch(); }
+        } catch (e) { $("error").textContent = e.message; }
+        finally { switching = false; sw.removeAttribute("aria-busy"); refresh(); }
+    }
+    if ($("avail-switch")) $("avail-switch").addEventListener("click", toggleAvailability);
+    refresh();
+})();
+</script>
+{% endblock %}

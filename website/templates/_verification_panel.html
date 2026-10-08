@@ -1,0 +1,56 @@
+{# Verification state + "Contact Cooperative Manager" for a driver / Umusare. Expects `vstate` (own_verification)
+   and `member_kind` ("driver" | "umusare"). Contact details come only from the user's own cooperative. #}
+{% if vstate and not vstate.verified %}
+{% set st = vstate.status %}
+<section class="panel verify-panel {{ 'bad' if st in ('REJECTED', 'SUSPENDED') else 'warn' }}" id="verification-panel" aria-live="polite">
+    <div class="eyebrow" style="font-size:11px; font-weight:800; letter-spacing:.12em; color:#92400e;">VERIFICATION REQUIRED</div>
+    {% if st == "PENDING" %}
+        <h2>{{ "More information requested" if vstate.info_requested else "Waiting for verification" }}</h2>
+        <p><b>Your account is awaiting cooperative verification.</b></p>
+        <p>Please contact your cooperative manager by phone or email to complete verification.</p>
+        {% if vstate.info_requested and vstate.note %}
+        <p class="verify-note"><b>Your manager asked:</b> {{ vstate.note }}</p>
+        {% endif %}
+    {% elif st == "REJECTED" %}
+        <h2>Verification was not approved</h2>
+        <p>Your cooperative did not approve your verification.</p>
+        {% if vstate.note %}<p class="verify-note"><b>Reason:</b> {{ vstate.note }}</p>{% endif %}
+        <p>Contact your cooperative manager to correct your information and ask for a new review.</p>
+    {% else %}
+        <h2>Verification suspended</h2>
+        <p>Your verification is currently suspended by your cooperative.</p>
+        {% if vstate.note %}<p class="verify-note"><b>Reason:</b> {{ vstate.note }}</p>{% endif %}
+        <p>Contact your cooperative manager to resolve this.</p>
+    {% endif %}
+    <p class="muted" style="margin-top:6px;">
+    {% if member_kind == "umusare" %}
+        Until you are verified you cannot go available or accept assistance requests, and you can only message your cooperative manager.
+    {% else %}
+        Safety monitoring and requesting Umusare assistance stay available to you at all times. Until you are verified you can only message your cooperative manager.
+    {% endif %}
+    </p>
+
+    <div class="contact-card" id="manager-contact">
+        <h3>Contact Cooperative Manager</h3>
+        {% if vstate.manager %}
+        <dl class="kv-contact">
+            <dt>Manager</dt><dd>{{ vstate.manager.name }}</dd>
+            <dt>Phone</dt><dd>{{ vstate.manager.phone or "No phone number on file" }}</dd>
+            <dt>Email</dt><dd>{{ vstate.manager.email }}</dd>
+            <dt>Cooperative</dt><dd>{{ vstate.cooperative }}{% if vstate.cooperative_code %} <span class="muted">({{ vstate.cooperative_code }})</span>{% endif %}</dd>
+        </dl>
+        <div class="contact-actions">
+            {% if vstate.manager.phone %}<a class="btn btn-primary btn-sm" href="tel:{{ vstate.manager.phone }}">Call Manager</a>{% endif %}
+            <a class="btn btn-light btn-sm" href="mailto:{{ vstate.manager.email }}?subject={{ ('SafeDrive verification - ' ~ vstate.member_code) | urlencode }}">Email Manager</a>
+            <a class="btn btn-light btn-sm" href="{{ url_for('chat.page', contact_manager=1) }}">Chat with Manager</a>
+        </div>
+        {% else %}
+        <p class="muted">Your cooperative has no manager assigned yet. SafeDrive administrators have been asked to assign one;
+            please try again later.</p>
+        {% endif %}
+    </div>
+</section>
+{% elif vstate and vstate.verified %}
+<p class="verified-line"><span class="badge ok">✓ Cooperative verified</span>
+    <span class="muted">by {{ vstate.cooperative }}{% if vstate.verified_at %} on {{ vstate.verified_at.strftime('%Y-%m-%d') }}{% endif %} · {{ vstate.member_code }}</span></p>
+{% endif %}

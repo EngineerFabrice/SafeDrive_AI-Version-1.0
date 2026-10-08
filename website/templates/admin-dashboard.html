@@ -1,185 +1,120 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SafeDrive AI - Admin Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-:root {
-    --primary: #4f46e5;
-    --secondary: #6366f1;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --bg-light: #f3f4f6;
-    --bg-dark: #111827;
-    --text-dark: #1f2937;
-    --text-light: #6b7280;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
-body { display: flex; min-height: 100vh; background: var(--bg-light); color: var(--text-dark); }
-
-/* Sidebar */
-.sidebar {
-    width: 260px;
-    background: #fff;
-    border-right: 1px solid #e5e7eb;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-}
-.sidebar h2 { margin-bottom: 30px; font-size: 22px; color: var(--primary); }
-.sidebar a {
-    display: flex; align-items: center;
-    padding: 12px 15px;
-    margin-bottom: 8px;
-    text-decoration: none;
-    color: var(--text-dark);
-    border-radius: 8px;
-    transition: background 0.2s;
-}
-.sidebar a:hover { background: var(--bg-light); }
-.sidebar a.active { background: var(--primary); color: #fff; }
-
-/* Main content */
-.main { flex: 1; padding: 20px 30px; overflow-y: auto; }
-
-/* Top bar */
-.topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-.topbar input { padding: 10px 15px; border-radius: 10px; border: 1px solid #d1d5db; width: 250px; }
-.topbar .user { display: flex; align-items: center; gap: 10px; }
-.topbar .user img { width: 40px; height: 40px; border-radius: 50%; }
-
-/* Cards */
-.cards { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; }
-.card {
-    flex: 1 1 200px;
-    background: #fff;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    transition: transform 0.2s;
-}
-.card:hover { transform: translateY(-3px); }
-.card h3 { font-size: 16px; color: var(--text-light); margin-bottom: 10px; }
-.card p { font-size: 22px; font-weight: 700; }
-
-/* Table */
-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-thead { background: var(--bg-light); }
-tr:hover { background: var(--bg-light); }
-.action-btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-right: 5px; }
-.btn-danger { background: var(--danger); color: #fff; }
-.btn-success { background: var(--success); color: #fff; }
-.btn-warning { background: var(--warning); color: #fff; }
-
-/* Responsive */
-@media (max-width: 900px) {
-    .cards { flex-direction: column; }
-    .sidebar { width: 200px; }
-}
-</style>
-</head>
-<body>
-
-<!-- Sidebar -->
-<div class="sidebar">
-    <h2>Admin Panel</h2>
-    <a href="#" class="active">Dashboard</a>
-    <a href="{{ url_for('monitoring.dashboard') }}">Live Monitoring</a>
-    <a href="#">Manage Users</a>
-    <a href="#">Assign Privileges</a>
-    <a href="#">Reports</a>
-    <a href="#">Analytics</a>
-    <a href="#">Settings</a>
-    <a href="{{ url_for('routes.logout') }}">Logout</a>
+{% extends "layout.html" %}
+{% block title %}Administration{% endblock %}
+{% block heading %}Administration{% endblock %}
+{% block content %}
+{% set approved = cooperatives | selectattr("status", "equalto", "APPROVED") | list %}
+<div class="cards">
+    <div class="card"><h3>Drivers</h3><div class="value">{{ counts.driver }}</div></div>
+    <div class="card"><h3>Umusare</h3><div class="value">{{ counts.umusare }}</div></div>
+    <div class="card"><h3>Managers</h3><div class="value">{{ counts.manager }}</div></div>
+    <div class="card"><h3>Administrators</h3><div class="value">{{ counts.admin }}</div></div>
+    <div class="card"><h3>Cooperatives</h3><div class="value">{{ cooperatives | length }}</div></div>
 </div>
 
-<!-- Main Content -->
-<div class="main">
-    <!-- Topbar -->
-    <div class="topbar">
-        <input type="text" placeholder="Search user, trip, or report...">
-        <div class="user">
-            <span>{{ current_user.username }}</span>
-            <img src="{{ url_for('static', filename='images/user.png') }}" alt="Admin">
-        </div>
-    </div>
-
-    <!-- Cards -->
-    <div class="cards">
-        <div class="card">
-            <h3>Total Users</h3>
-            <p>{{ users|length or 0 }}</p>
-        </div>
-        <div class="card">
-            <h3>Total Drivers</h3>
-            <p>{{ users|selectattr("role", "equalto", "driver")|list|length or 0 }}</p>
-        </div>
-        <div class="card">
-            <h3>Total Chefs</h3>
-            <p>{{ users|selectattr("role", "equalto", "chef")|list|length or 0 }}</p>
-        </div>
-        <div class="card">
-            <h3>Total Admins</h3>
-            <p>{{ users|selectattr("role", "equalto", "admin")|list|length or 0 }}</p>
-        </div>
-    </div>
-
-    <!-- Manage Users Table -->
-    <h3 style="margin-bottom:15px;">Manage Users</h3>
+<section class="panel">
+    <h2>Cooperatives</h2>
+    <form class="inline" method="POST" action="{{ url_for('routes.create_cooperative') }}" style="margin-bottom:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="Cooperative name" required minlength="3" maxlength="120" aria-label="Cooperative name">
+        <input type="text" name="code" placeholder="Code, e.g. KGL-01" required maxlength="20" aria-label="Cooperative code">
+        <input type="text" name="district" placeholder="District (optional)" maxlength="80" aria-label="District">
+        <select name="manager_id" aria-label="Manager">
+            <option value="">Manager: assign later (saved as inactive draft)</option>
+            {% for m in users | selectattr('role', 'equalto', 'manager') | selectattr('is_active') %}<option value="{{ m.id }}">{{ m.username }} ({{ m.email }})</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Add cooperative</button>
+    </form>
+    <div class="table-wrap">
     <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
+        <thead><tr><th>Name</th><th>Code</th><th>District</th><th>Status</th><th>Drivers</th><th>Umusare</th><th>Pending</th></tr></thead>
         <tbody>
-            {% if users %}
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.username }}</td>
-                    <td>{{ user.email }}</td>
-                    <td>{{ user.role }}</td>
-                    <td>
-                        {% if user.role != 'admin' %}
-                        <form method="POST" action="{{ url_for('routes.update_role') }}" style="display:inline;">
-                            <input type="hidden" name="user_id" value="{{ user.id }}">
-                            {% if user.role == 'driver' %}
-                            <input type="hidden" name="role" value="chef">
-                            <button class="action-btn btn-success" type="submit">Promote to Chef</button>
-                            {% elif user.role == 'chef' %}
-                            <input type="hidden" name="role" value="driver">
-                            <button class="action-btn btn-warning" type="submit">Demote to Driver</button>
-                            {% endif %}
-                        </form>
-                        <form method="POST" action="{{ url_for('routes.delete_user') }}" style="display:inline;">
-                            <input type="hidden" name="user_id" value="{{ user.id }}">
-                            <button class="action-btn btn-danger" type="submit">Remove</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            {% else %}
-                <tr>
-                    <td colspan="4" style="text-align:center;">No users available.</td>
-                </tr>
-            {% endif %}
+        {% for c in cooperatives %}
+            <tr>
+                <td>{{ c.name }}</td><td>{{ c.code }}</td><td>{{ c.district or "—" }}</td>
+                <td><span class="badge {{ 'ok' if c.status == 'APPROVED' else 'bad' }}">{{ c.status }}</span></td>
+                <td>{{ c.drivers or 0 }}</td><td>{{ c.umusare or 0 }}</td><td>{{ c.pending or 0 }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7" class="muted">No cooperatives yet. Add one so drivers and Umusare can register.</td></tr>
+        {% endfor %}
         </tbody>
     </table>
-</div>
+    </div>
+</section>
 
-</body>
-</html>
+<section class="panel">
+    <h2>Users</h2>
+    <p class="muted" style="margin-bottom:12px;">Drivers, Umusare and managers must belong to a cooperative.
+        Assigning a role never verifies an Umusare; verification is a separate manager step.</p>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Cooperative</th><th>Membership</th><th>Change role / cooperative</th><th></th></tr></thead>
+        <tbody>
+        {% for u in users %}
+            <tr>
+                <td>{{ u.username }}{% if not u.is_active %} <span class="badge bad">disabled</span>{% endif %}</td>
+                <td>{{ u.email }}</td>
+                <td><span class="badge info">{{ u.role }}</span></td>
+                <td>{{ u.cooperative_name or "—" }}</td>
+                <td>{% if u.membership_status %}<span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(u.membership_status, 'bad') }}">{{ u.membership_status }}</span>{% else %}—{% endif %}</td>
+                <td>
+                {% if u.id != current_user.id %}
+                    <form class="inline" method="POST" action="{{ url_for('routes.update_member') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                        <select name="role" aria-label="Role for {{ u.username }}">
+                            {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == u.role }}>{{ r }}</option>{% endfor %}
+                        </select>
+                        <select name="cooperative_id" aria-label="Cooperative for {{ u.username }}">
+                            <option value="">— none (admin only) —</option>
+                            {% for c in approved %}<option value="{{ c.id }}" {{ 'selected' if c.id == u.cooperative_id }}>{{ c.name }}</option>{% endfor %}
+                        </select>
+                        <button class="btn btn-light btn-sm" type="submit">Save</button>
+                    </form>
+                {% else %}<span class="muted">you</span>{% endif %}
+                </td>
+                <td>
+                {% if u.id != current_user.id %}
+                    <form method="POST" action="{{ url_for('routes.delete_user') }}"
+                          onsubmit="return confirm('Remove {{ u.username }}? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                        <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+                    </form>
+                {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="panel" id="assistance-monitor">
+    <h2>Assistance requests</h2>
+    <p class="muted" style="margin-bottom:12px;">Read-only operational view. Areas are approximate (±1 km); exact driver
+        locations and AI sobriety results are not shown here and cannot be changed.</p>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>#</th><th>Status</th><th>Type</th><th>Requested</th><th>Driver</th><th>Cooperative</th>
+            <th>Assigned Umusare</th><th>Approx. area</th></tr></thead>
+        <tbody>
+        {% for r in assistance %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td><span class="badge {{ 'info' if r.active else ('ok' if r.status == 'COMPLETED' else ('bad' if r.status == 'NO_UMUSARE_AVAILABLE' else '')) }}">{{ r.status | replace('_', ' ') }}</span></td>
+                <td>{{ 'AI-triggered' if r.trigger_source == 'AI_TRIGGERED' else 'Driver-initiated' }}</td>
+                <td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                <td>{{ r.driver }}</td>
+                <td>{{ r.cooperative or "—" }}</td>
+                <td>{{ r.umusare or "—" }}{% if r.umusare_cooperative %} <span class="muted">({{ r.umusare_cooperative }})</span>{% endif %}</td>
+                <td>{{ r.approx_area }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="8" class="muted">No assistance requests yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endblock %}

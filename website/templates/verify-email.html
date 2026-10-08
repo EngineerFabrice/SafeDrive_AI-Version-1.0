@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Verify your email · SafeDrive AI{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card narrow">
+    <div class="auth-eyebrow">Email verification</div>
+    <h1>Verify your email</h1>
+    {% if delivered %}
+    <p class="auth-sub" id="delivery-state">We sent a 6-digit verification code to <b>{{ masked }}</b>. The code expires in {{ ttl_min }} minutes.</p>
+    {% elif delivered is sameas false %}
+    <p class="auth-sub" id="delivery-state">We could not send the verification email to <b>{{ masked }}</b>. Please use
+      <b>Resend code</b> to try again in a moment.</p>
+    {% else %}
+    <p class="auth-sub" id="delivery-state">Press <b>Resend code</b> to receive a 6-digit verification code at <b>{{ masked }}</b>.
+      The code expires in {{ ttl_min }} minutes.</p>
+    {% endif %}
+    <div class="auth-steps" aria-label="Registration steps">
+      <span class="done">✓ Account details</span><span class="on">2 · Verify email</span><span>3 · Cooperative verification</span>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="flash {{ category }}" role="alert">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    <form method="POST" action="{{ url_for('account.verify_email') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="code" class="auth-eyebrow" style="display:block; margin-bottom:8px;">Verification code</label>
+      <input class="otp-input" type="text" name="code" id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+             autocomplete="one-time-code" required aria-describedby="code-help" placeholder="••••••">
+      <p id="code-help" class="hint" style="font-size:12px; color:#6b7a8f; margin-top:6px;">Enter the 6 digits from the email.</p>
+      <button type="submit" class="btn-solid">Verify email</button>
+    </form>
+    <div class="resend-row">
+      <span>Didn't receive the code? Check your spam folder.</span>
+      <form method="POST" action="{{ url_for('account.resend_code') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn-ghost" type="submit" id="resend" data-wait="{{ resend_wait }}">Resend code</button>
+      </form>
+    </div>
+    <p class="auth-foot">
+      {% if signed_in %}<a href="{{ url_for('routes.dashboard') }}">Back to my dashboard</a>
+      {% else %}Wrong address? <a href="{{ url_for('routes.register') }}">Register again</a>{% endif %}
+    </p>
+    <p class="auth-foot" style="font-size:12px;">Email verification confirms that you control this email address. It is separate
+      from verification by your cooperative manager.</p>
+  </div>
+</div>
+<script>
+(() => {
+  const b = document.getElementById("resend");
+  let left = Number(b.dataset.wait || 0);
+  function tick() {
+    if (left > 0) { b.disabled = true; b.textContent = "Resend code in " + left + "s"; left -= 1; setTimeout(tick, 1000); }
+    else { b.disabled = false; b.textContent = "Resend code"; }
+  }
+  tick();
+  const c = document.getElementById("code");
+  c.addEventListener("input", () => { c.value = c.value.replace(/\D/g, "").slice(0, 6); });
+  c.focus();
+})();
+</script>
+{% endblock %}

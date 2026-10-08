@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+{% from "_badge.html" import sd_badge %}
+{% block title %}{{ m.username }}{% endblock %}
+{% block heading %}{{ m.username }}{% endblock %}
+{% block styles %}
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns:1fr; } }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; font-size:14px; }
+.kv dt { color:var(--text-light); } .kv dd { font-weight:600; word-break:break-word; }
+.decision { border:1px solid var(--border); border-radius:12px; padding:14px; margin-top:12px; }
+.decision h3 { font-size:14px; margin-bottom:6px; }
+.decision textarea { width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px; font:inherit; min-height:56px; margin:6px 0; }
+.note-box { background:var(--bg-light); border-radius:8px; padding:8px 12px; margin-top:8px; font-size:14px; }
+{% endblock %}
+{% block content %}
+{% set back = url_for('coop.verification') if current_user.is_admin() else url_for('routes.manager_dashboard') %}
+<p style="margin-bottom:14px;"><a href="{{ back }}" class="muted">← Back</a></p>
+{% set st = m.verification_status %}
+<div class="grid2">
+    <section class="panel">
+        <h2>{{ "Umusare" if m.role == "umusare" else "Driver" }} profile</h2>
+        <dl class="kv">
+            <dt>Name</dt><dd>{{ m.username }}</dd>
+            <dt>{{ "Umusare ID" if m.role == "umusare" else "Driver ID" }}</dt><dd>{{ m.code }}</dd>
+            <dt>Phone</dt><dd>{{ m.phone or "Not provided" }}</dd>
+            <dt>Email</dt><dd>{{ m.email }} {% if m.email_verified %}<span class="badge ok">✓ Email verified</span>{% else %}<span class="badge warn">Email not verified</span>{% endif %}</dd>
+            <dt>SafeDrive</dt><dd>{{ sd_badge(m.badge) }}</dd>
+            <dt>Group</dt><dd>{{ m.group_name or "Not assigned" }}</dd>
+            <dt>Cooperative</dt><dd>{{ m.cooperative or "—" }}{% if m.cooperative_code %} <span class="muted">({{ m.cooperative_code }})</span>{% endif %}</dd>
+            <dt>Membership</dt><dd><span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(m.membership_status, 'bad') }}">{{ m.membership_status or "—" }}</span></dd>
+            <dt>Registered</dt><dd>{{ m.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+            <dt>Last sign-in</dt><dd>{{ m.last_login_at.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if m.last_login_at else "Never" }}</dd>
+            {% if m.role == "driver" %}
+            <dt>Licence number</dt><dd>{{ m.license_number or "Not provided" }}</dd>
+            {% endif %}
+        </dl>
+        {% if m.vehicle %}
+        <h3 style="font-size:14px; margin:16px 0 8px;">Vehicle</h3>
+        {% if m.vehicle.vehicle_plate_number %}
+        <dl class="kv">
+            <dt>Plate number</dt><dd><span style="font-family:'Courier New',monospace; font-weight:800; border:2px solid #111827; border-radius:6px; padding:1px 8px;">{{ m.vehicle.vehicle_plate_number }}</span></dd>
+            <dt>Vehicle</dt><dd>{{ [m.vehicle.vehicle_make, m.vehicle.vehicle_model] | select | join(" ") or "Not provided" }}</dd>
+            <dt>Type</dt><dd>{{ (m.vehicle.vehicle_type or "Not provided") | capitalize }}</dd>
+            <dt>Updated</dt><dd>{{ m.vehicle.vehicle_updated_at.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if m.vehicle.vehicle_updated_at else "—" }}</dd>
+        </dl>
+        {% else %}<p><span class="badge warn">VEHICLE INFORMATION REQUIRED</span> <span class="muted">The driver has not added a plate number.</span></p>{% endif %}
+        {% endif %}
+        <h3 style="font-size:14px; margin:16px 0 8px;">Group</h3>
+        {% set active_groups = m.groups | selectattr("status", "equalto", "ACTIVE") | list %}
+        {% if active_groups %}
+        <form class="inline" method="POST" action="{{ url_for('coop.member_group', user_id=m.id) }}" id="group-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="group_id" aria-label="Group for {{ m.username }}" required>
+                <option value="">Choose a group</option>
+                {% for g in active_groups %}{% if g.id != m.group_id %}<option value="{{ g.id }}">{{ g.name }}</option>{% endif %}{% endfor %}
+            </select>
+            <button class="btn btn-light btn-sm" type="submit">{{ "Move to group" if m.group_id else "Add to group" }}</button>
+        </form>
+        {% else %}<p class="muted">No active groups in this cooperative yet.</p>{% endif %}
+        {% if m.group_id %}
+        <form method="POST" action="{{ url_for('coop.group_remove', group_id=m.group_id, user_id=m.id) }}" style="margin-top:6px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-light btn-sm" type="submit">Remove from {{ m.group_name }}</button>
+        </form>
+        {% endif %}
+        <p class="muted" style="margin-top:10px; font-size:13px;">Only information stored by SafeDrive is shown. No identity documents,
+            licences or certificates have been uploaded unless listed above.</p>
+    </section>
+
+    <section class="panel">
+        <h2>Verification</h2>
+        <dl class="kv">
+            <dt>Status</dt><dd>
+                {% if m.info_requested %}<span class="badge info">INFO REQUESTED</span>
+                {% else %}<span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(st, 'bad') }}">{{ "✓ VERIFIED" if st == "VERIFIED" else st }}</span>{% endif %}</dd>
+            {% if st == "VERIFIED" %}
+            <dt>Verified on</dt><dd>{{ m.verified_at.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if m.verified_at else "—" }}</dd>
+            <dt>Verified by</dt><dd>{{ m.verified_by_name or "—" }}</dd>
+            {% elif m.reviewed_at %}
+            <dt>Last review</dt><dd>{{ m.reviewed_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+            {% endif %}
+            <dt>Account</dt><dd><span class="badge {{ 'ok' if m.is_active else 'bad' }}">{{ 'Active' if m.is_active else 'Deactivated' }}</span></dd>
+            <dt>Operational status</dt><dd>{{ m.operational }}</dd>
+            {% if m.role == "umusare" %}
+            <dt>Completed assistance</dt><dd>{{ m.completed_assists }}</dd>
+            <dt>Requests accepted</dt><dd>{{ m.requests_accepted or 0 }} of {{ m.requests_received or 0 }}</dd>
+            {% endif %}
+            <dt>Active assistance</dt><dd>{{ m.active_assistance | replace('_', ' ') if m.active_assistance else "None" }}</dd>
+        </dl>
+        {% if m.verification_note %}<div class="note-box"><b>{{ "Information requested" if m.info_requested else "Note" }}:</b> {{ m.verification_note }}</div>{% endif %}
+
+        {% if st != "VERIFIED" and m.blockers %}
+        <div class="decision" style="border-color:#f59e0b; background:#fffbeb;">
+            <h3>Not ready for verification</h3>
+            <ul style="margin:6px 0 0 18px; font-size:14px;">{% for b in m.blockers %}<li>{{ b | capitalize }}</li>{% endfor %}</ul>
+            <p class="muted" style="font-size:13px; margin-top:6px;">You can request more information while you wait.</p>
+        </div>
+        {% endif %}
+        {% if st != "VERIFIED" and not m.blockers %}
+        <form method="POST" action="{{ url_for('coop.review', user_id=m.id) }}" class="decision">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="VERIFY">
+            <h3>Verify</h3>
+            <p class="muted" style="font-size:13px;">Confirm you have checked this person's identity and details with the cooperative.</p>
+            <button class="btn btn-primary btn-sm" type="submit" style="margin-top:6px;">Verify {{ "Umusare" if m.role == "umusare" else "driver" }}</button>
+        </form>
+        {% endif %}
+        {% if st in ("PENDING", "REJECTED") %}
+        <form method="POST" action="{{ url_for('coop.review', user_id=m.id) }}" class="decision">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="REQUEST_INFO">
+            <h3>Request more information</h3>
+            <textarea name="note" maxlength="255" required placeholder="What does the member need to provide or correct?" aria-label="Information requested"></textarea>
+            <button class="btn btn-light btn-sm" type="submit">Send request</button>
+        </form>
+        {% endif %}
+        {% if st != "REJECTED" %}
+        <form method="POST" action="{{ url_for('coop.review', user_id=m.id) }}" class="decision">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="REJECT">
+            <h3>Reject verification</h3>
+            <textarea name="note" maxlength="255" required placeholder="Reason shown to the member (no sensitive details)" aria-label="Rejection reason"></textarea>
+            <button class="btn btn-danger btn-sm" type="submit">Reject</button>
+        </form>
+        {% endif %}
+        {% if st in ("PENDING", "VERIFIED") %}
+        <form method="POST" action="{{ url_for('coop.review', user_id=m.id) }}" class="decision"
+              onsubmit="return confirm('Suspend verification for {{ m.username }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="SUSPEND">
+            <h3>Suspend verification</h3>
+            <textarea name="note" maxlength="255" placeholder="Reason (optional, shown to the member)" aria-label="Suspension reason"></textarea>
+            <button class="btn btn-light btn-sm" type="submit">Suspend</button>
+        </form>
+        {% endif %}
+        {% if m.role == "umusare" %}<p class="muted" style="font-size:13px; margin-top:8px;">An Umusare who is not verified is taken offline and cannot receive requests. This cannot be done while they are assisting a driver.</p>{% endif %}
+    </section>
+</div>
+
+<section class="panel">
+    <h2>Account and contact</h2>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        {% if chat_token %}<a class="btn btn-primary btn-sm" href="{{ url_for('chat.page', to=chat_token) }}">Message {{ m.username }}</a>{% endif %}
+        {% if m.phone %}<a class="btn btn-light btn-sm" href="tel:{{ m.phone }}">Call</a>{% endif %}
+        <a class="btn btn-light btn-sm" href="mailto:{{ m.email }}">Email</a>
+        <form method="POST" action="{{ url_for('coop.member_active', user_id=m.id) }}"
+              onsubmit="return confirm('{{ 'Deactivate' if m.is_active else 'Activate' }} {{ m.username }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="active" value="{{ 0 if m.is_active else 1 }}">
+            <button class="btn btn-light btn-sm" type="submit">{{ 'Deactivate account' if m.is_active else 'Activate account' }}</button>
+        </form>
+    </div>
+    <p class="muted" style="margin-top:8px; font-size:13px;">AI sobriety results are produced by SafeDrive AI and cannot be changed by managers.</p>
+</section>
+
+<section class="panel">
+    <h2>Recent assistance</h2>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Assistance</th><th>Status</th><th>Type</th><th>Requested</th><th>Payment</th></tr></thead>
+        <tbody>
+        {% for h in m.history %}
+            <tr><td class="muted">{{ h.code }}</td><td><span class="badge {{ 'info' if h.active else '' }}">{{ h.status | replace('_', ' ') }}</span></td>
+                <td>{{ 'AI-triggered' if h.trigger_source == 'AI_TRIGGERED' else 'Driver-initiated' }}</td>
+                <td>{{ h.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td><td>{{ h.payment_status | replace('_', ' ') }}</td></tr>
+        {% else %}
+            <tr><td colspan="5" class="muted">No assistance history.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endblock %}

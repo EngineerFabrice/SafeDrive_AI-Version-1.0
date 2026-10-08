@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Terms & Conditions · SafeDrive AI{% endblock %}
+{% block content %}
+<div class="legal">
+<article>
+  <h1>SafeDrive AI Terms &amp; Conditions</h1>
+  <p class="meta">Version {{ version }} · Effective {{ effective }}</p>
+
+  <nav class="toc" aria-label="Contents"><ol>
+    <li><a href="#t1">Introduction</a></li><li><a href="#t2">Eligibility</a></li><li><a href="#t3">Account registration</a></li>
+    <li><a href="#t4">Email verification</a></li><li><a href="#t5">Cooperative membership</a></li>
+    <li><a href="#t6">Manager verification</a></li><li><a href="#t7">Limitations of SafeDrive AI</a></li>
+    <li><a href="#t8">Driver responsibility</a></li><li><a href="#t9">Umusare assistance</a></li>
+    <li><a href="#t10">Location services</a></li><li><a href="#t11">Vehicle information</a></li>
+    <li><a href="#t12">The verification badge</a></li><li><a href="#t13">User conduct</a></li><li><a href="#t14">Messaging</a></li>
+    <li><a href="#t15">Payments</a></li><li><a href="#t16">Suspension and termination</a></li><li><a href="#t17">Availability</a></li>
+    <li><a href="#t18">Limitation of liability</a></li><li><a href="#t19">Changes to these Terms</a></li><li><a href="#t20">Contact</a></li>
+  </ol></nav>
+
+  <h2 id="t1">1. Introduction</h2>
+  <p>SafeDrive AI ("SafeDrive", "the service") is a driver-safety and assistance platform. It uses a driver-facing camera to
+     estimate whether a driver shows visual patterns that may be associated with alcohol-related impairment and, when a driver
+     needs help, connects them with an Umusare &mdash; a support driver who belongs to a SafeDrive cooperative &mdash; who can
+     drive them to their destination.</p>
+  <p>SafeDrive AI was created and developed by Fabrice NDAYISABA. These Terms govern your use of the SafeDrive AI website and
+     services. By creating an account or using the service you agree to these Terms and to the
+     <a href="{{ url_for('account.privacy') }}">Privacy Policy</a>.</p>
+
+  <h2 id="t2">2. Eligibility</h2>
+  <p>You may use SafeDrive only if you are legally able to enter into this agreement, and, if you drive, you hold the licences and
+     permissions the law requires for the vehicle you drive. Drivers and Umusare register through a cooperative participating in
+     SafeDrive. Cooperative managers and administrators are appointed; they cannot self-register.</p>
+  <p>You are responsible for making sure that your use of SafeDrive complies with the laws and regulations that apply to you.</p>
+
+  <h2 id="t3">3. Account registration</h2>
+  <ul>
+    <li>Provide accurate, current and complete information, and keep it up to date.</li>
+    <li>Use one account per person. Accounts may not be shared, sold or transferred.</li>
+    <li>Keep your password confidential. You are responsible for activity on your account until you tell us it has been compromised.</li>
+    <li>Tell your cooperative manager or SafeDrive promptly if you believe someone else has accessed your account.</li>
+  </ul>
+
+  <h2 id="t4">4. Email verification</h2>
+  <p>You must register with an email address that you control and confirm it by entering the one-time code we send to it.
+     Codes are short-lived and single-use. Until your email is verified, some features are unavailable and your cooperative
+     cannot complete your verification.</p>
+
+  <h2 id="t5">5. Cooperative membership</h2>
+  <p>Drivers and Umusare join SafeDrive through a cooperative. Your cooperative and its manager are responsible for reviewing
+     their members. A cooperative may organise members into groups. Membership of a cooperative does not by itself make you
+     verified, and a cooperative that is suspended may stop its members from using some features.</p>
+
+  <h2 id="t6">6. Manager verification</h2>
+  <p>Email verification and manager verification are different things and are shown separately:</p>
+  <ul>
+    <li><b>Email verification</b> means that the user controls the email address on the account.</li>
+    <li><b>Manager (cooperative) verification</b> means that the user's cooperative has reviewed and approved the relevant
+        account information &mdash; for drivers this includes the vehicle plate number.</li>
+  </ul>
+  <p>A manager may verify, reject, request more information about, or suspend a member. Rejection or suspension is shown to the
+     member together with the reason the manager provided and the manager's contact details.</p>
+
+  <h2 id="t7">7. Limitations of SafeDrive AI</h2>
+  <div class="callout">
+    <p><b>SafeDrive AI is an assistance and safety tool, not a test.</b> It:</p>
+    <ul>
+      <li>estimates visual patterns that may be associated with alcohol-related impairment;</li>
+      <li>does <b>not</b> measure blood alcohol concentration (BAC) and never reports a BAC value;</li>
+      <li>does <b>not</b> medically diagnose intoxication or any other condition;</li>
+      <li>does <b>not</b> guarantee that a driver is safe or fit to drive;</li>
+      <li>can produce uncertain or incorrect results, for example because of lighting, camera position, face visibility or the
+          limits of its training data;</li>
+      <li>does not replace legal driving requirements, roadside tests by the authorities, professional judgement or applicable regulations.</li>
+    </ul>
+  </div>
+  <p>Results are expressed only as <b>SOBER</b>, <b>UNCERTAIN</b> or <b>POTENTIALLY NOT SOBER</b>. "SOBER" means only that the
+     system did not detect the patterns it looks for at that moment; "UNCERTAIN" means it could not reliably assess; "POTENTIALLY
+     NOT SOBER" means it detected patterns that may be associated with impairment. No result is a certification of sobriety or a
+     finding of intoxication, and SafeDrive does not allow managers or administrators to change an AI result.</p>
+
+  <h2 id="t8">8. Driver responsibility</h2>
+  <p>You remain solely responsible for deciding whether you are fit and legally permitted to drive. Never continue driving
+     because SafeDrive reports "SOBER" if you feel, or have reason to believe, that you are not safe to drive. If you are in doubt,
+     do not drive: request an Umusare, use other transport, or contact someone you trust. In an emergency, contact the local
+     emergency services.</p>
+
+  <h2 id="t9">9. Umusare assistance</h2>
+  <ul>
+    <li><b>Requests.</b> A driver may request assistance from the safety alert or manually at any time. A manual request never
+        changes the AI result.</li>
+    <li><b>Matching.</b> SafeDrive offers the request to nearby Umusare who are verified, available and recently located, widening
+        the search if needed. Availability of an Umusare is not guaranteed.</li>
+    <li><b>Acceptance.</b> The first Umusare to accept is assigned. The driver then sees the Umusare's identity details held by
+        SafeDrive, and both see each other's live location until the request ends.</li>
+    <li><b>Journey.</b> The Umusare marks arrival and completes the journey at the destination. SafeDrive measures the distance
+        from the Umusare's location updates.</li>
+    <li><b>Fare.</b> SafeDrive calculates an estimated fare during the journey and a final fare from the measured distance and the
+        pricing in force. Fares are calculated by SafeDrive and cannot be set by either party.</li>
+    <li><b>Payment confirmation.</b> The driver marks the payment as sent and the Umusare confirms receipt. A payment is shown as
+        completed only after the Umusare confirms it; SafeDrive never treats a payment as completed merely because a driver says
+        they sent it.</li>
+  </ul>
+  <p>Umusare must provide assistance safely, lawfully and only when fit to drive.</p>
+
+  <h2 id="t10">10. Location services</h2>
+  <ul>
+    <li>Location is needed to request assistance, to match you with a nearby Umusare and, if you choose, to see nearby verified drivers.</li>
+    <li>Before an Umusare accepts a request, they see only an approximate area (about 1 km) and a rounded distance.</li>
+    <li>After acceptance, the driver and the accepted Umusare share exact live locations with each other. This sharing stops when
+        the request is completed or cancelled, and the exact pickup point is then deleted.</li>
+    <li>"Nearby drivers" is optional. If you switch it on, other SafeDrive-verified drivers see only your approximate area (about
+        1 km), your name, cooperative and group &mdash; never your Driver ID, exact position, contact details, vehicle plate or
+        movement history. Switching it off hides you immediately.</li>
+    <li>Nearby drivers are always found around the approximate area SafeDrive last accepted from your device. Location updates
+        are limited in frequency and implausible jumps are rejected, so the feature cannot be used to search other places.</li>
+    <li>Location accuracy depends on your device, and no system can guarantee perfect privacy or accuracy. Do not share your
+        location with SafeDrive if you do not want it used as described here.</li>
+  </ul>
+
+  <h2 id="t11">11. Vehicle information</h2>
+  <p>Drivers must provide accurate vehicle information where required, including the plate number of the vehicle they drive.
+     The plate number must belong to that vehicle. Providing false vehicle information is prohibited. Changing the plate number
+     of a verified account requires the cooperative to verify the account again.</p>
+
+  <h2 id="t12">12. The verification badge</h2>
+  <p>The blue <b>✓ VERIFIED</b> badge means "Verified by SafeDrive" on a specific, listed basis: email verified, valid cooperative
+     membership, required profile information completed (for drivers, the vehicle plate), approval by the cooperative manager,
+     and an active account. Selecting the badge shows that basis.</p>
+  <p>The badge is <b>not</b> a government certification, a professional or driving licence, a medical certification, a criminal
+     record check, or a guarantee that a person is safe to drive or trustworthy.</p>
+
+  <h2 id="t13">13. User conduct</h2>
+  <p>You must not:</p>
+  <ul>
+    <li>impersonate another person or misrepresent your identity, role or cooperative;</li>
+    <li>provide false information, including false vehicle information;</li>
+    <li>make fraudulent or abusive assistance requests, or falsely report payments;</li>
+    <li>misuse anyone's location information, or try to obtain more precise location data than you are shown;</li>
+    <li>harass, threaten or abuse other users;</li>
+    <li>access or attempt to access accounts or data that are not yours;</li>
+    <li>abuse the messaging system;</li>
+    <li>attempt to manipulate, deceive or interfere with the AI assessment or the camera monitoring;</li>
+    <li>attempt to bypass email, cooperative or any other verification, or interfere with the security of the service.</li>
+  </ul>
+
+  <h2 id="t14">14. Messaging</h2>
+  <p>Internal messaging is for legitimate SafeDrive and cooperative communication, such as verification, support and operational
+     matters. You may only message people SafeDrive allows you to contact. Do not use messaging for harassment, threats, spam,
+     fraud or sharing other people's private information without permission. Administrators may review messaging records when
+     investigating a security or safety issue.</p>
+
+  <h2 id="t15">15. Payments</h2>
+  <p>SafeDrive provides fare calculation and a payment-confirmation workflow. SafeDrive does <b>not</b> process, hold or transfer
+     money and does not guarantee that any transfer takes place. Payments are made directly between the driver and the Umusare
+     (for example by Mobile Money) and are their responsibility. Disputes about payments should be raised through the
+     problem-reporting feature or with the cooperative.</p>
+
+  <h2 id="t16">16. Suspension and termination</h2>
+  <p>SafeDrive, administrators or your cooperative may restrict, suspend or terminate an account or its verification, for
+     example for fraud, security violations, false information, abuse, serious or repeated breaches of these Terms, or when the
+     member's cooperative is suspended. Where appropriate and lawful we will tell you the reason and how to contact your manager.
+     You may stop using SafeDrive at any time.</p>
+
+  <h2 id="t17">17. Availability</h2>
+  <p>We aim to keep SafeDrive available, but it may sometimes be unavailable or work incorrectly because of network problems,
+     device or browser problems, camera problems, location-service problems, server maintenance, or the unavailability of
+     third-party services such as map or email providers. Always have another plan for getting home safely.</p>
+
+  <h2 id="t18">18. Limitation of liability</h2>
+  <p>SafeDrive is an assistance technology provided to support, not replace, your own judgement and your legal and safety
+     responsibilities. To the extent permitted by applicable law, SafeDrive and its developer are not liable for loss or damage
+     arising from reliance on an AI result, from a driver's decision to drive, from the unavailability of an Umusare, or from
+     the acts or omissions of drivers, Umusare, cooperatives or third parties. Nothing in these Terms excludes or limits any
+     liability that cannot be excluded or limited under applicable law, including liability for fraud or for death or personal
+     injury caused by negligence.</p>
+
+  <h2 id="t19">19. Changes to these Terms</h2>
+  <p>We may update these Terms. Each version is numbered and dated. When a change requires it, you will be asked to accept the new
+     version before continuing to use certain features. Your acceptance of earlier versions remains on record; accepting a new
+     version never overwrites it.</p>
+
+  <h2 id="t20">20. Contact</h2>
+  <p>SafeDrive AI &mdash; created/developed by Fabrice NDAYISABA.<br>
+     Email: <a href="mailto:{{ contact }}">{{ contact }}</a></p>
+  <p>For questions about your account or verification, contact your cooperative manager first. This contact address belongs to
+     the project's developer and does not represent a registered company or legal entity.</p>
+</article>
+</div>
+{% endblock %}

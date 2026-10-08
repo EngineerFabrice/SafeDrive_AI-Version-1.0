@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% block title %}Cooperatives{% endblock %}
+{% block heading %}Cooperatives{% endblock %}
+{% block content %}
+<section class="panel">
+    <h2>Create cooperative</h2>
+    <form class="inline" method="POST" action="{{ url_for('routes.create_cooperative') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="Cooperative name" required minlength="3" maxlength="120" aria-label="Cooperative name">
+        <input type="text" name="code" placeholder="Code, e.g. KGL-01" required maxlength="20" aria-label="Cooperative code">
+        <input type="hidden" name="next" value="{{ url_for('coop.cooperatives') }}">
+        <input type="text" name="district" placeholder="District (optional)" maxlength="80" aria-label="District">
+        <select name="manager_id" aria-label="Manager">
+            <option value="">Manager: assign later (saved as inactive draft)</option>
+            {% for m in managers | selectattr('is_active') %}<option value="{{ m.id }}">{{ m.username }} ({{ m.email }})</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Create cooperative</button>
+    </form>
+    <p class="muted" style="font-size:13px; margin-top:8px;">Every active cooperative needs a responsible manager. Without one it is kept
+        as an inactive draft and is not offered at registration.</p>
+
+</section>
+
+<section class="panel">
+    <h2>All cooperatives</h2>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Cooperative</th><th>ID</th><th>District</th><th>Status</th><th>Manager</th><th>Manager contact</th><th>Groups</th>
+            <th>Drivers</th><th>Umusare</th><th>Pending verification</th><th></th></tr></thead>
+        <tbody>
+        {% for c in coops %}
+            <tr>
+                <td><b>{{ c.name }}</b></td><td>{{ c.code }}</td><td>{{ c.district or "—" }}</td>
+                <td><span class="badge {{ 'ok' if c.status == 'APPROVED' else 'bad' }}">{{ 'ACTIVE' if c.status == 'APPROVED' else 'INACTIVE' }}</span></td>
+                <td>{% if c.manager %}{{ c.manager.name }}{% else %}<span class="badge warn">No manager</span>{% endif %}</td>
+                <td class="muted" style="font-size:13px;">{% if c.manager %}{{ c.manager.phone or "no phone" }}<br>{{ c.manager.email }}{% else %}—{% endif %}</td>
+                <td>{{ c.groups or 0 }}</td>
+                <td>{{ c.drivers or 0 }}</td><td>{{ c.umusare or 0 }}</td>
+                <td>{% if c.pending %}<span class="badge warn">{{ c.pending }}</span>{% else %}0{% endif %}</td>
+                <td><a class="btn btn-light btn-sm" href="{{ url_for('coop.cooperative', coop_id=c.id) }}">Manage</a></td>
+            </tr>
+        {% else %}
+            <tr><td colspan="11" class="muted">No cooperatives yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Managers</h2>
+    <p class="muted" style="margin-bottom:12px;">A manager belongs to exactly one cooperative. Give a user the manager role on the
+        Administration page, then assign them from the cooperative's page.</p>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Manager</th><th>ID</th><th>Email</th><th>Cooperative</th><th>Account</th><th>Phone</th><th></th></tr></thead>
+        <tbody>
+        {% for m in managers %}
+            <tr>
+                <td><b>{{ m.username }}</b></td><td class="muted">{{ m.code }}</td><td>{{ m.email }}</td>
+                <td>{{ m.cooperative or "—" }}</td>
+                <td><span class="badge {{ 'ok' if m.is_active else 'bad' }}">{{ 'Active' if m.is_active else 'Deactivated' }}</span></td>
+                <td>
+                    <form class="inline" method="POST" action="{{ url_for('coop.manager_phone_admin', user_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="text" name="phone" placeholder="+250…" aria-label="Phone for {{ m.username }}" style="width:130px;">
+                        <button class="btn btn-light btn-sm" type="submit">Save</button>
+                    </form>
+                </td>
+                <td>
+                    <form class="inline" method="POST" action="{{ url_for('coop.manager_active', user_id=m.id) }}"
+                          onsubmit="return confirm('{{ 'Deactivate' if m.is_active else 'Activate' }} {{ m.username }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="active" value="{{ 0 if m.is_active else 1 }}">
+                        <button class="btn btn-light btn-sm" type="submit">{{ 'Deactivate' if m.is_active else 'Activate' }}</button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7" class="muted">No manager accounts yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endblock %}

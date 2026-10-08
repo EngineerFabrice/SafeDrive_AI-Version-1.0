@@ -1,413 +1,968 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SafeDrive AI - Driver Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-:root {
-    --primary: #4f46e5;
-    --success: #10b981;
-    --danger: #ef4444;
-    --bg-light: #f3f4f6;
-    --text-dark: #1f2937;
-    --text-light: #6b7280;
-    --warning: #f59e0b;
+{% extends "layout.html" %}
+{% from "_badge.html" import sd_badge, state_chip %}
+{% block title %}Driver{% endblock %}
+{% block heading %}Driver safety{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+<script>window.SAFEDRIVE_TILES = {{ maps.tiles | tojson }};</script>
+<script src="{{ url_for('static', filename='js/assist-map.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/nearby.js') }}" defer></script>
+{% endblock %}
+{% block styles %}
+/* ===== Driver dashboard (redesign). Tokens come from layout.html :root ===== */
+.page-head { display:none; }                       /* the dashboard has its own identity header */
+.main { max-width:1240px; }
+.eyebrow { font-size:11px; font-weight:800; letter-spacing:.12em; color:var(--text-light); text-transform:uppercase; }
+.dd-card { background:#fff; border:1px solid #eceef3; border-radius:16px; box-shadow:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.04); padding:20px; }
+.dd-card h2 { font-size:17px; margin:2px 0 0; }
+.sec-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+
+/* Identity header */
+.dd-head { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+.who-block { display:flex; gap:14px; align-items:center; min-width:0; }
+.who-avatar { width:52px; height:52px; border-radius:14px; background:linear-gradient(135deg,#4f46e5,#2563eb); color:#fff; display:flex;
+    align-items:center; justify-content:center; font-weight:800; font-size:18px; flex-shrink:0; }
+.who-name { font-size:22px; font-weight:800; line-height:1.2; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.who-meta { font-size:13px; color:var(--text-light); margin-top:2px; }
+.chips { display:flex; gap:8px; flex-wrap:wrap; }
+
+/* Hero: safety status + help */
+.dd-hero { display:grid; grid-template-columns:minmax(0,1.75fr) minmax(260px,1fr); gap:16px; margin-bottom:16px; }
+.status-card { display:flex; gap:18px; align-items:flex-start; border:1px solid #eceef3; border-left:6px solid #9ca3af; border-radius:16px;
+    background:#fff; padding:24px; margin:0; box-shadow:0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.04); }
+.status-card .dot { width:16px; height:16px; border-radius:50%; background:#9ca3af; flex-shrink:0; margin-top:28px;
+    box-shadow:0 0 0 6px rgba(156,163,175,.18); }
+.status-card h2 { font-size:30px; line-height:1.15; margin:6px 0 8px; letter-spacing:.01em; }
+.status-card #status-text { color:var(--text-dark); font-size:15px; line-height:1.55; max-width:62ch; }
+.status-card.sober { border-left-color:var(--success); } .status-card.sober .dot { background:var(--success); box-shadow:0 0 0 6px rgba(16,185,129,.18); }
+.status-card.uncertain { border-left-color:var(--warning); } .status-card.uncertain .dot { background:var(--warning); box-shadow:0 0 0 6px rgba(245,158,11,.18); }
+.status-card.alert { border-left-color:var(--danger); background:#fffafa; } .status-card.alert .dot { background:var(--danger); box-shadow:0 0 0 6px rgba(239,68,68,.2); }
+.status-card.alert h2 { color:#b91c1c; }
+.status-card.assessing .dot { background:var(--primary); animation:pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity:.35; } }
+.meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--text-light); }
+.meta > span { background:var(--bg-light); border-radius:999px; padding:4px 10px; }
+.meta b { color:var(--text-dark); }
+.actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+.btn-lg { padding:12px 20px; font-size:15px; border-radius:10px; }
+.hero-alert-note { margin-top:10px; font-weight:700; color:#991b1b; }
+.help-card { display:flex; flex-direction:column; justify-content:space-between; gap:12px; background:#0f172a; color:#e2e8f0;
+    border-radius:16px; padding:22px; }
+.help-card .eyebrow { color:#93c5fd; }
+.help-card h2 { color:#fff; font-size:20px; margin:4px 0 6px; }
+.help-card p { color:#cbd5e1; font-size:14px; line-height:1.55; }
+.help-card .btn { background:#fff; color:#0f172a; width:100%; text-align:center; padding:12px; }
+.help-card .btn:disabled { opacity:.6; cursor:not-allowed; }
+.help-card small { color:#94a3b8; font-size:12px; }
+
+/* Status tiles */
+.dd-tiles { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin:16px 0; }
+.tile { background:#fff; border:1px solid #eceef3; border-radius:14px; padding:14px 16px; }
+.tile .v { font-size:16px; font-weight:800; margin-top:4px; display:flex; align-items:center; gap:8px; }
+.tile .s { font-size:12px; color:var(--text-light); margin-top:2px; }
+.led { width:9px; height:9px; border-radius:50%; background:#9ca3af; flex-shrink:0; }
+.led.on { background:var(--success); } .led.warn { background:var(--warning); } .led.bad { background:var(--danger); } .led.info { background:var(--primary); }
+
+/* Main grid */
+.dd-grid { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr); gap:16px; align-items:start; }
+.dd-side { display:flex; flex-direction:column; gap:16px; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; }
+.kv dt { color:var(--text-light); } .kv dd { font-weight:600; word-break:break-word; }
+.plate { display:inline-block; font-family:"Courier New", monospace; font-weight:800; font-size:20px; letter-spacing:.08em; border:2px solid #111827;
+    border-radius:8px; padding:4px 12px; background:#fff; }
+.req-box { border:1px dashed #f59e0b; background:#fffbeb; border-radius:12px; padding:14px; }
+.req-box b { color:#92400e; font-size:12px; letter-spacing:.08em; }
+.req-box p { font-size:14px; margin:4px 0 10px; }
+.vform { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+.vform label { font-size:12px; font-weight:600; color:var(--text-light); display:flex; flex-direction:column; gap:4px; }
+.vform input, .vform select { width:100%; }
+.vform .full { grid-column:1 / -1; }
+details.edit summary { cursor:pointer; color:var(--primary); font-weight:600; font-size:14px; margin-top:12px; list-style:none; }
+details.edit summary::-webkit-details-marker { display:none; }
+.msg-count { font-size:28px; font-weight:800; }
+
+/* Nearby map */
+.map-shell { position:relative; border-radius:14px; overflow:hidden; border:1px solid #e5e7eb; background:#f8fafc; min-height:340px; }
+.nearby-map { height:380px; }
+.map-state { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    text-align:center; padding:24px; background:rgba(248,250,252,.94); z-index:500; }
+.map-state[hidden] { display:none; }
+.map-state p { max-width:46ch; font-size:14px; color:var(--text-dark); line-height:1.5; }
+.map-state-icon { width:40px; height:40px; border-radius:50%; background:#e0e7ff; color:#3730a3; display:flex; align-items:center;
+    justify-content:center; font-weight:800; }
+.map-state.error .map-state-icon, .map-state.denied .map-state-icon { background:#fee2e2; color:#991b1b; }
+.map-state.loading .map-state-icon { animation:pulse 1.2s infinite; }
+.cell-pin { width:34px; height:34px; border-radius:50%; background:#059669; color:#fff; font-weight:800; display:flex; align-items:center;
+    justify-content:center; border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+.cell-pop .k { font-size:10px; font-weight:800; letter-spacing:.1em; color:#6b7280; }
+.cell-pop ul { list-style:none; padding:0; margin:6px 0; } .cell-pop li { margin-bottom:6px; font-size:13px; }
+.cell-pop .vt { color:#0b57d0; font-weight:700; font-size:11px; } .cell-pop p { font-size:12px; color:#6b7280; margin:0; }
+.you-label { font-weight:800; }
+.map-legend { font-size:12px; color:var(--text-light); margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; }
+.map-legend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+.switch { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--text-dark); cursor:pointer; }
+.switch input { width:18px; height:18px; }
+
+/* Assistance (existing workflow, restyled) */
+.assist { border-left:6px solid var(--primary); border-radius:16px; }
+.assist.ok { border-left-color:var(--success); } .assist.bad { border-left-color:var(--danger); } .assist.done { border-left-color:#9ca3af; }
+.assist h2 { font-size:20px; margin-bottom:6px; }
+.assist-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.assist-id { font-size:12px; color:var(--text-light); font-weight:700; letter-spacing:.04em; }
+.timeline { list-style:none; display:flex; gap:6px; flex-wrap:wrap; margin:12px 0 4px; padding:0; }
+.timeline li { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--bg-light); color:var(--text-light); }
+.timeline li.done { background:#ecfdf5; color:#065f46; } .timeline li.done::before { content:"✓ "; }
+.timeline li.now { background:var(--primary); color:#fff; } .timeline li.now::before { content:"● "; }
+.assist-grid { display:grid; grid-template-columns:minmax(260px, 1fr) minmax(260px, 1.3fr); gap:16px; margin-top:14px; }
+.id-card { border:1px solid var(--border); border-radius:14px; padding:16px; background:linear-gradient(180deg,#f8fafc,#fff); }
+.id-top { display:flex; gap:12px; align-items:center; }
+.avatar { width:56px; height:56px; border-radius:50%; background:#dcfce7; color:#166534; display:flex; align-items:center;
+          justify-content:center; font-weight:700; font-size:20px; flex-shrink:0; overflow:hidden; }
+.avatar img { width:100%; height:100%; object-fit:cover; }
+.id-label { font-size:11px; font-weight:700; letter-spacing:.12em; color:#166534; }
+.id-name { font-size:19px; font-weight:700; margin:2px 0 4px; }
+.vbadge { border:1px solid #86efac; background:#ecfdf5; color:#065f46; border-radius:999px; padding:3px 10px; font-size:12px;
+          font-weight:700; cursor:pointer; }
+.vbadge:hover, .vbadge:focus { background:#d1fae5; outline:2px solid #10b981; outline-offset:1px; }
+.claims { list-style:none; padding:0; margin:10px 0 0; font-size:13px; color:#065f46; }
+.claims li::before { content:"✓ "; font-weight:700; }
+.map-box { height:300px; border-radius:12px; border:1px solid var(--border); }
+.map-legend b.d { color:#2563eb; } .map-legend b.u { color:#16a34a; }
+.fare-box, .pay-box, .summary-box { border:1px solid var(--border); border-radius:14px; padding:16px; margin-top:16px; }
+.fare-box .k, .pay-box .k { font-size:11px; font-weight:700; letter-spacing:.12em; color:var(--text-light); }
+.amount { font-size:28px; font-weight:800; margin:4px 0; }
+.pay-box.required { border:2px solid var(--primary); }
+.pay-box.ok, .summary-box { border-color:#86efac; background:#f0fdf4; }
+.kv2 { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px; margin-top:8px; }
+.kv2 dt { color:var(--text-light); } .kv2 dd { font-weight:600; }
+.stars button { font-size:26px; background:none; border:none; cursor:pointer; color:#d1d5db; padding:0 2px; }
+.stars button.on { color:#f59e0b; }
+textarea { width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px; font:inherit; min-height:60px; }
+.assist-msg { margin-top:12px; font-size:14px; color:var(--text-dark); }
+.assist-msg.err { color:var(--danger); font-weight:600; }
+.notice-proto { background:#fffbeb; color:#92400e; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:16px; }
+.disclaimer { font-size:12px; color:var(--text-light); margin-top:20px; text-align:center; }
+
+/* Alert overlay + dialogs */
+.overlay { position:fixed; inset:0; background:rgba(127,29,29,.92); display:flex; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+.overlay[hidden] { display:none; }
+.alert-box { background:#fff; border-radius:18px; max-width:520px; width:100%; padding:28px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+.alert-box .tag { color:var(--danger); font-weight:800; letter-spacing:.12em; font-size:14px; }
+.alert-box h2 { color:var(--danger); font-size:28px; margin:8px 0 14px; }
+.alert-box p { color:var(--text-dark); line-height:1.55; margin-bottom:10px; }
+.alert-box .btn { width:100%; padding:14px; font-size:16px; margin-top:10px; }
+.confirm { position:fixed; inset:0; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+.confirm[hidden] { display:none; }
+.confirm .box { background:#fff; border-radius:16px; max-width:460px; width:100%; padding:24px; }
+.confirm h2 { font-size:20px; margin-bottom:10px; }
+.confirm p { line-height:1.5; margin-bottom:10px; }
+
+/* Verification panel (shared partial), restyled for this page */
+.verify-panel { border-radius:16px; }
+
+@media (max-width: 1000px) {
+    .dd-hero, .dd-grid { grid-template-columns:1fr; }
+    .dd-tiles { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
-* { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
-body { display:flex; min-height:100vh; background: var(--bg-light); color: var(--text-dark); }
+@media (max-width: 800px) {
+    .assist-grid { grid-template-columns:1fr; }
+    .status-card { padding:18px; } .status-card h2 { font-size:24px; }
+    .vform { grid-template-columns:1fr; }
+    .nearby-map { height:300px; } .map-shell { min-height:300px; }
+    .who-name { font-size:19px; }
+}
+{% endblock %}
+{% block account_banners %}{% endblock %}
+{% block content %}
+{% set me = ctx.me %}{% set badge = ctx.badge %}{% set vstate = ctx.vstate %}
+{% set st = badge.states if badge else {} %}
+<header class="dd-head">
+    <div class="who-block">
+        <div class="who-avatar" aria-hidden="true">{{ me.initials }}</div>
+        <div style="min-width:0;">
+            <div class="eyebrow">Driver</div>
+            <div class="who-name">{{ me.username }} {{ sd_badge(badge) }}</div>
+            <div class="who-meta">Driver ID {{ me.code }}{% if membership %} · {{ membership.cooperative_name }}{% endif %}{% if me.group_name %} · {{ me.group_name }}{% endif %}</div>
+        </div>
+    </div>
+    <div class="chips" aria-label="Account states">
+        {{ state_chip("Email", st.email, st.email == "VERIFIED") }}
+        {{ state_chip("Terms", st.terms, st.terms == "ACCEPTED") }}
+        {{ state_chip("Cooperative", st.cooperative or "NONE", st.cooperative == "MEMBER") }}
+        {{ state_chip("Manager verification", st.manager or "PENDING", st.manager == "VERIFIED") }}
+        {{ state_chip("Account", st.account, st.account == "ACTIVE") }}
+    </div>
+</header>
 
-/* Sidebar */
-.sidebar { width:250px; background:#fff; border-right:1px solid #e5e7eb; padding:20px; display:flex; flex-direction:column; }
-.sidebar h2 { margin-bottom:30px; font-size:24px; color:var(--primary); }
-.sidebar a { display:flex; align-items:center; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; transition: background 0.2s; }
-.sidebar a:hover { background: var(--bg-light); }
-.sidebar a.active { background: var(--primary); color:#fff; }
-
-/* Main Content */
-.main { flex:1; padding:20px 30px; overflow-y:auto; }
-
-/* Tabs */
-.tabs { display:flex; gap:10px; margin-bottom:20px; }
-.tabs button { padding:10px 20px; border:none; border-radius:8px; cursor:pointer; background:#e5e7eb; color:var(--text-dark); font-weight:600; transition: all 0.2s; }
-.tabs button.active { background:var(--primary); color:#fff; }
-.tabs button:hover { opacity:0.85; }
-.tab-content { display:none; }
-.tab-content.active { display:block; }
-
-/* Topbar */
-.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-.topbar input { padding:10px 15px; border-radius:10px; border:1px solid #d1d5db; width:250px; }
-.topbar .user { display:flex; align-items:center; gap:10px; }
-.topbar .user img { width:40px; height:40px; border-radius:50%; }
-
-/* Cards */
-.cards { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
-.card { flex:1 1 200px; background:#fff; padding:20px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
-.card h3 { font-size:16px; color:var(--text-light); margin-bottom:10px; }
-.card p { font-size:22px; font-weight:700; }
-
-/* Sections */
-.section { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:30px; }
-.section .box { flex:1 1 300px; background:#fff; border-radius:15px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); position:relative; }
-.box h3 { margin-bottom:15px; color:var(--text-dark); }
-
-/* Table */
-table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05); }
-th, td { padding:12px 15px; text-align:left; border-bottom:1px solid #e5e7eb; }
-thead { background:var(--bg-light); }
-tr:hover { background: var(--bg-light); }
-
-/* Detection Buttons */
-.detect-btn, .start-camera, .stop-camera, .print-btn { padding:10px 20px; border-radius:8px; border:none; cursor:pointer; font-size:16px; margin-top:10px; transition: all 0.2s; }
-.detect-btn { background:#007bff; color:white; }
-.start-camera { background:#0066ff; color:white; }
-.stop-camera { background:#ef4444; color:white; }
-.print-btn { background:#10b981; color:white; margin-left:10px; }
-.detect-btn:hover { background:#0056cc; }
-.start-camera:hover { background:#004bb3; }
-.stop-camera:hover { background:#cc3737; }
-.print-btn:hover { background:#0f9d5b; }
-
-/* Alerts */
-.alert-msg { font-weight:bold; font-size:18px; padding:15px; border-radius:10px; margin-top:15px; text-align:center; opacity:1; transition: opacity 0.3s; }
-.alert-danger { background:#ef4444; color:white; }
-.alert-success { background:#10b981; color:white; }
-.alert-warning { background: var(--warning); color:white; }
-
-/* Countdown overlay */
-.countdown-overlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.6); color:white; padding:10px 20px; border-radius:10px; font-size:20px; display:none; }
-
-@media (max-width:900px) { .cards, .section { flex-direction: column; } .sidebar { width:200px; } }
-</style>
-</head>
-<body>
-
-<!-- Sidebar -->
-<div class="sidebar">
-    <h2>SafeDrive AI</h2>
-    <a href="#" class="active">Dashboard</a>
-    <a href="{{ url_for('monitoring.dashboard') }}">Live Monitoring</a>
-    <a href="#">Trips</a>
-    <a href="#">Schedule</a>
-    <a href="#">Messages</a>
-    <a href="#">Analytics</a>
-    <a href="#">Vehicles</a>
-    <a href="#">Report</a>
-    <a href="#">Support</a>
-    <a href="#">Settings</a>
-    <a href="{{ url_for('routes.logout') }}">Logout</a>
+<div class="notice-proto" id="proto-notice" hidden>
+    Prototype AI model: trained on a limited dataset and not validated on independent drivers.
+    It cannot measure blood alcohol. Always use your own judgement.
 </div>
 
-<!-- Main -->
-<div class="main">
+<!-- 1. SAFETY STATUS (most important) + 2. NEED HELP -->
+<div class="dd-hero">
+    <section class="status-card" id="status-card" aria-live="polite" aria-labelledby="status-title">
+        <span class="dot" aria-hidden="true"></span>
+        <div style="flex:1; min-width:0;">
+            <div class="eyebrow" id="status-eyebrow">AI safety status</div>
+            <h2 id="status-title">Monitoring is off</h2>
+            <p id="status-text">Start monitoring to let SafeDrive AI assess the driver camera.</p>
+            <p class="hero-alert-note" id="hero-alert-note" hidden>Please do not continue driving if you are not safe to drive.</p>
+            <div class="meta">
+                <span>Monitoring: <b id="meta-monitoring">OFF</b></span>
+                <span>Camera: <b id="meta-camera">—</b></span>
+                <span id="meta-confidence-wrap" hidden>AI confidence: <b id="meta-confidence">—</b></span>
+            </div>
+            <div class="actions">
+                <button class="btn btn-danger btn-lg" id="btn-hero-assist" type="button" hidden>REQUEST UMUSARE ASSISTANCE</button>
+                <button class="btn btn-primary btn-lg" id="btn-start" type="button">Start monitoring</button>
+                <button class="btn btn-light btn-lg" id="btn-stop" type="button" hidden>Stop monitoring</button>
+                <a class="btn btn-light btn-lg" href="{{ url_for('monitoring.dashboard') }}">Technical view</a>
+            </div>
+            <p class="muted" id="control-error" role="alert" style="margin-top:10px;"></p>
+        </div>
+    </section>
+    <aside class="help-card support-card" id="support-card" aria-labelledby="help-title">
+        <div>
+            <div class="eyebrow">Need help?</div>
+            <h2 id="help-title">Need help even if the AI says you are okay?</h2>
+            <p>A nearby verified Umusare can drive you to your destination. Your exact location is shared only after an Umusare accepts.</p>
+        </div>
+        <div>
+            <button class="btn" id="btn-request-card" type="button">REQUEST UMUSARE SUPPORT</button>
+            <small style="display:block; margin-top:8px;">A manual request never changes your AI result.</small>
+        </div>
+    </aside>
+</div>
 
-    <!-- Topbar -->
-    <div class="topbar">
-        <input type="text" placeholder="Search here...">
-        <div class="user">
-            <span>{{ username }}</span>
-            <img src="{{ url_for('static', filename='images/user.png') }}" alt="User">
+<!-- 3. ACTIVE ASSISTANCE (shown while a request exists; becomes the primary workflow) -->
+<!-- Assistance request status (shown while a request exists) -->
+<section class="panel assist" id="assist" hidden aria-live="polite">
+    <div class="assist-head">
+        <div>
+            <h2 id="assist-title">Requesting assistance</h2>
+            <p id="assist-text" class="muted"></p>
+            <p class="muted" id="assist-type" style="font-size:13px;"></p>
+        </div>
+        <span class="assist-id" id="assist-id"></span>
+    </div>
+    <ol class="timeline" id="assist-steps" aria-label="Assistance progress">
+        <li data-step="0">Request sent</li><li data-step="1">Umusare accepted</li><li data-step="2">Umusare is coming</li>
+        <li data-step="3">Umusare arrived · journey active</li><li data-step="4">Journey completed</li>
+        <li data-step="5">Payment confirmed</li>
+    </ol>
+
+    <div class="assist-grid" id="assist-grid" hidden>
+        <!-- Professional identity card: only claims backed by database records -->
+        <div class="id-card" id="u-card" hidden>
+            <div class="id-top">
+                <div class="avatar" id="u-avatar" aria-hidden="true"></div>
+                <div>
+                    <div class="id-label">VERIFIED UMUSARE</div>
+                    <div class="id-name" id="u-name"></div>
+                    <button type="button" class="vbadge" id="u-badge" aria-haspopup="dialog">✓ VERIFIED UMUSARE</button>
+                </div>
+            </div>
+            <ul class="claims" id="u-claims"></ul>
+            <dl class="kv2">
+                <dt>Cooperative</dt><dd id="u-coop">—</dd>
+                <dt>Umusare ID</dt><dd id="u-id">—</dd>
+                <dt>Member ID</dt><dd id="u-member">—</dd>
+                <dt>Phone</dt><dd id="u-phone">—</dd>
+                <dt>Email</dt><dd id="u-email">—</dd>
+                <dt>Distance</dt><dd id="u-distance">—</dd>
+                <dt>Estimated arrival</dt><dd id="u-eta">—</dd>
+            </dl>
+        </div>
+        <div>
+            <div class="map-box" id="assist-map-el" hidden data-fallback="map-fallback" aria-label="Live assistance map"></div>
+            <p class="map-legend" id="map-legend" hidden><b class="d">●</b> You (driver) &nbsp; <b class="u">●</b> Umusare
+               &nbsp;·&nbsp; Live locations are shared only between you and your accepted Umusare.</p>
+            <p class="muted" id="map-fallback" hidden>Live map unavailable. Status, distance and contact details above stay up to date.</p>
         </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs">
-        <button class="active" onclick="switchTab('dashboardTab', this)">Dashboard</button>
-        <button onclick="switchTab('reportsTab', this)">Recent Detections</button>
+    <!-- ESTIMATED FARE during the journey (server-calculated; not the final payment) -->
+    <div class="fare-box" id="fare-box" hidden>
+        <div class="k">ESTIMATED FARE</div>
+        <div class="amount" id="fare-amount">—</div>
+        <dl class="kv2"><dt>Distance so far</dt><dd id="fare-km">—</dd><dt>Rate</dt><dd id="fare-rate">—</dd></dl>
+        <p class="muted" style="margin-top:6px;">Estimate only. SafeDrive calculates the final fare from the actual journey
+           distance when the Umusare completes the journey.</p>
     </div>
 
-    <!-- Dashboard Tab -->
-    <div id="dashboardTab" class="tab-content active">
-        <div class="cards">
-            <div class="card"><h3>Total Trips</h3><p>{{ total_trips or 0 }}</p></div>
-            <div class="card"><h3>Distance Driven</h3><p>{{ total_distance or 0 }} km</p></div>
-            <div class="card"><h3>Driving Hours</h3><p>{{ driving_hours or "0h 0m" }}</p></div>
-            <div class="card"><h3>Rating</h3><p>{{ rating or "N/A" }}</p></div>
+    <!-- Payment (two-step confirmation; SafeDrive does not transfer money) -->
+    <div class="pay-box" id="pay-box" hidden>
+        <div class="k" id="pay-k">PAYMENT REQUIRED</div>
+        <div class="amount" id="pay-amount">—</div>
+        <dl class="kv2">
+            <dt>Final journey distance</dt><dd id="pay-km">—</dd>
+            <dt>Rate</dt><dd id="pay-rate">—</dd>
+            <dt>Pay to</dt><dd><span id="pay-name"></span> <span class="badge ok">✓ Verified</span></dd>
+            <dt>Registered phone</dt><dd id="pay-phone">—</dd>
+        </dl>
+        <p class="muted" id="pay-status" style="margin-top:8px;"></p>
+        <div id="pay-instructions" hidden style="margin-top:10px;">
+            <p><b>SafeDrive does not transfer money.</b> Send <b id="pay-amount2"></b> to <b id="pay-phone2"></b> using
+               Mobile Money or the payment method you agreed with your Umusare. When you have sent it, come back and press
+               PAYMENT SENT. Your Umusare will then confirm that the money arrived.</p>
         </div>
+        <div class="actions">
+            <button class="btn btn-primary" id="btn-pay-now" type="button" hidden>PAY NOW</button>
+            <button class="btn btn-primary" id="btn-pay-sent" type="button" hidden>PAYMENT SENT</button>
+        </div>
+    </div>
 
-        <div class="section">
-            <!-- Upload Image -->
-            <div class="box">
-                <h3>📤 Upload Image for Detection</h3>
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <input type="file" name="file" accept="image/*" required>
-                    <button type="submit" class="detect-btn">Detect</button>
+    <!-- Final summary -->
+    <div class="summary-box" id="summary-box" hidden>
+        <h2 style="color:#065f46;">ASSISTANCE COMPLETED ✓</h2>
+        <dl class="kv2">
+            <dt>Journey</dt><dd id="sum-km">—</dd><dt>Final fare</dt><dd id="sum-fare">—</dd>
+            <dt>Payment</dt><dd>✓ COMPLETED</dd><dt>Umusare</dt><dd id="sum-umusare">—</dd>
+            <dt>Cooperative</dt><dd id="sum-coop">—</dd><dt>Assistance ID</dt><dd id="sum-id">—</dd>
+            <dt>Duration</dt><dd id="sum-duration">—</dd>
+        </dl>
+        <div id="rate-box" style="margin-top:12px;">
+            <b>Rate this assistance (optional)</b>
+            <div class="stars" id="stars" role="radiogroup" aria-label="Rating">
+                <button type="button" data-v="1" aria-label="1 star">★</button><button type="button" data-v="2" aria-label="2 stars">★</button>
+                <button type="button" data-v="3" aria-label="3 stars">★</button><button type="button" data-v="4" aria-label="4 stars">★</button>
+                <button type="button" data-v="5" aria-label="5 stars">★</button>
+            </div>
+            <textarea id="rate-comment" maxlength="500" placeholder="Comment (optional)" aria-label="Rating comment"></textarea>
+            <div class="actions"><button class="btn btn-primary btn-sm" id="btn-rate" type="button">Submit rating</button></div>
+        </div>
+        <p class="muted" id="rated-msg" hidden></p>
+        <details style="margin-top:10px;"><summary>Report a problem</summary>
+            <textarea id="report-text" maxlength="500" placeholder="What went wrong?" aria-label="Problem description"></textarea>
+            <div class="actions"><button class="btn btn-light btn-sm" id="btn-report" type="button">Send report</button></div>
+        </details>
+    </div>
+
+    <div id="assist-fallback" hidden style="margin-top:10px;">
+        <p><b>No verified Umusare is available nearby right now.</b> We searched up to <span id="fb-radius"></span> km,
+           including other cooperatives.</p>
+        <ul id="fb-contacts" style="margin:8px 0 0 18px;"></ul>
+        <p class="muted" style="margin-top:8px;">If you are not safe to drive, do not drive: call a trusted contact,
+           a taxi, or local emergency services if anyone is in danger.</p>
+    </div>
+    <div class="actions">
+        <a class="btn btn-primary" id="btn-call" href="#" hidden>CALL UMUSARE</a>
+        <button class="btn btn-light" id="btn-view-map" type="button" hidden>VIEW LIVE LOCATION</button>
+        <button class="btn btn-light" id="btn-connected" type="button" hidden>Confirm Umusare arrived</button>
+        <button class="btn btn-light" id="btn-cancel" type="button" hidden>CANCEL</button>
+        <button class="btn btn-light" id="btn-again" type="button" hidden>Request again</button>
+    </div>
+    <p class="muted" id="assist-error" role="alert" style="margin-top:8px;"></p>
+</section>
+
+<!-- Verification details (claims come from database records only) -->
+<div class="confirm" id="verify-modal" hidden role="dialog" aria-modal="true" aria-labelledby="verify-title">
+    <div class="box">
+        <h2 id="verify-title">VERIFIED UMUSARE</h2>
+        <p class="muted" id="verify-who"></p>
+        <ul class="claims" id="verify-list" style="font-size:15px;"></ul>
+        <p class="muted" style="margin-top:10px;">These statements come from SafeDrive and cooperative records. SafeDrive does
+           not hold driving-licence or certificate checks for Umusare.</p>
+        <div class="actions"><button class="btn btn-light" id="btn-verify-close" type="button">Close</button></div>
+    </div>
+</div>
+
+
+<!-- 4. AT A GLANCE: AI safety, monitoring, operational account status and assistance are different things -->
+<div class="dd-tiles" aria-label="Status overview">
+    <div class="tile"><div class="eyebrow">AI safety</div><div class="v"><span class="led" id="tile-ai-led"></span><span id="tile-ai">—</span></div>
+        <div class="s">From the camera assessment</div></div>
+    <div class="tile"><div class="eyebrow">Monitoring</div><div class="v"><span class="led" id="tile-mon-led"></span><span id="tile-mon">OFF</span></div>
+        <div class="s" id="tile-cam">Camera not in use</div></div>
+    <div class="tile"><div class="eyebrow">Account</div><div class="v"><span class="led on" id="tile-ops-led"></span><span id="tile-ops">ONLINE</span></div>
+        <div class="s">Operational status</div></div>
+    <div class="tile"><div class="eyebrow">Assistance</div><div class="v"><span class="led" id="tile-assist-led"></span><span id="tile-assist">None</span></div>
+        <div class="s" id="tile-assist-sub">No active assistance request.</div></div>
+</div>
+
+<!-- Setup: email, terms, cooperative verification (each a separate state) -->
+{% if not current_user.email_verified %}
+<section class="acct-banner" id="email-banner">
+    <div><b>EMAIL VERIFICATION REQUIRED</b><p>Please verify your email address to continue. Your cooperative cannot verify you before this.</p></div>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('account.verify_email') }}">Verify email</a>
+</section>
+{% endif %}
+{% if needs_terms_acceptance %}
+<section class="acct-banner" id="terms-banner">
+    <div><b>TERMS &amp; PRIVACY</b><p>Please review and accept the current Terms &amp; Conditions (v{{ legal_versions.terms }}) and Privacy Policy (v{{ legal_versions.privacy }}).</p></div>
+    <form method="POST" action="{{ url_for('account.accept_terms') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <label><input type="checkbox" name="accept_terms" value="1" required> I have read and agree to the
+            <a href="{{ url_for('account.terms') }}" target="_blank" rel="noopener">Terms</a> and
+            <a href="{{ url_for('account.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a></label>
+        <button class="btn btn-light btn-sm" type="submit">Accept</button>
+    </form>
+</section>
+{% endif %}
+{% with member_kind="driver" %}{% include "_verification_panel.html" %}{% endwith %}
+
+<div class="dd-grid">
+    <!-- 5. NEARBY DRIVERS (privacy-safe) -->
+    <section class="dd-card" id="nearby" aria-labelledby="nearby-count"
+             data-eligible="{{ 1 if badge and badge.verified else 0 }}" data-url="{{ url_for('driver.nearby') }}"
+             data-visibility-url="{{ url_for('driver.visibility') }}" data-presence-url="{{ url_for('driver.presence') }}">
+        <div class="sec-head">
+            <div><div class="eyebrow">Nearby safe drivers</div><h2 id="nearby-count">—</h2></div>
+            {% if badge and badge.verified %}
+            <label class="switch"><input type="checkbox" id="nearby-visible" {{ 'checked' if me.nearby_visibility }}>
+                Show me to nearby verified drivers</label>
+            {% endif %}
+        </div>
+        <div class="map-shell">
+            <div id="nearby-map" class="nearby-map" hidden aria-label="Map of nearby verified drivers"></div>
+            <div class="map-state info" id="nearby-state"><p>Loading…</p></div>
+        </div>
+        <div class="map-legend">
+            <span><i style="background:#1a73e8"></i>YOU · only you see your exact position</span>
+            <span><i style="background:#059669"></i>Nearby verified drivers · approximate area (≈1 km)</span>
+            <span>Within <span id="nearby-radius">10</span> km</span>
+        </div>
+        <p class="muted" id="nearby-vis-note" style="margin-top:6px; font-size:12px;">
+            {% if badge and badge.verified %}{{ "Other verified drivers can see your approximate area (≈1 km) while this page is open." if me.nearby_visibility else "You are hidden from other drivers. Switch on to appear as a nearby driver." }}{% endif %}</p>
+    </section>
+
+    <div class="dd-side">
+        <!-- 6. VEHICLE -->
+        <section class="dd-card" id="vehicle" aria-labelledby="vehicle-title">
+            <div class="eyebrow">Vehicle</div>
+            {% if me.vehicle_plate_number %}
+                <h2 id="vehicle-title" style="margin:8px 0 10px;"><span class="plate">{{ me.vehicle_plate_number }}</span></h2>
+                <dl class="kv">
+                    <dt>Vehicle</dt><dd>{{ [me.vehicle_make, me.vehicle_model] | select | join(" ") or "Not provided" }}</dd>
+                    <dt>Type</dt><dd>{{ me.vehicle_type_label or "Not provided" }}</dd>
+                </dl>
+            {% else %}
+                <h2 id="vehicle-title" class="sr-only" style="position:absolute; left:-9999px;">Vehicle</h2>
+                <div class="req-box" style="margin-top:8px;">
+                    <b>VEHICLE INFORMATION REQUIRED</b>
+                    <p>Add your vehicle plate number before completing verification.</p>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="document.getElementById('vehicle-edit').open = true; document.getElementById('vehicle_plate_number').focus();">ADD VEHICLE INFORMATION</button>
+                </div>
+            {% endif %}
+            <details class="edit" id="vehicle-edit">
+                <summary>{{ "Edit vehicle information" if me.vehicle_plate_number else "Vehicle form" }}</summary>
+                <form method="POST" action="{{ url_for('driver.update_vehicle') }}" class="vform">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label class="full">Plate number
+                        <input type="text" name="vehicle_plate_number" id="vehicle_plate_number" value="{{ me.vehicle_plate_number or '' }}"
+                               placeholder="RAB 123 A" maxlength="16" required style="text-transform:uppercase;"></label>
+                    <label>Make <input type="text" name="vehicle_make" value="{{ me.vehicle_make or '' }}" maxlength="40" placeholder="Toyota"></label>
+                    <label>Model <input type="text" name="vehicle_model" value="{{ me.vehicle_model or '' }}" maxlength="40" placeholder="Prius"></label>
+                    <label class="full">Type
+                        <select name="vehicle_type"><option value="">Select</option>
+                        {% for k, label in ctx.vehicle_types.items() %}<option value="{{ k }}" {{ 'selected' if me.vehicle_type == k }}>{{ label }}</option>{% endfor %}
+                        </select></label>
+                    {% if me.vehicle_plate_number and st.manager == "VERIFIED" %}
+                    <p class="muted full" style="font-size:12px;">Changing the plate number sends your account back to your cooperative manager for verification.</p>
+                    {% endif %}
+                    <div class="full"><button class="btn btn-primary btn-sm" type="submit">Save vehicle</button></div>
                 </form>
-                <img id="uploadedPreview" style="margin-top:15px; width:100%; border-radius:10px; display:none;">
-                <div id="uploadResult" class="alert-msg" style="display:none;"></div>
-            </div>
+            </details>
+        </section>
 
-            <!-- Live Camera -->
-            <div class="box">
-                <h3>📷 Live Camera Detection</h3>
-                <button class="start-camera" onclick="startLiveDetection()">Start Detection</button>
-                <button class="stop-camera" onclick="stopLiveDetection()" disabled>Stop Detection</button>
-                <video id="camera" width="350" height="250" autoplay style="border-radius:10px; margin-top:10px; display:none;"></video>
-                <div class="countdown-overlay" id="countdownOverlay"></div>
-                <div id="liveResult" class="alert-msg" style="display:none;"></div>
+        <!-- 7. COOPERATIVE -->
+        <section class="dd-card" aria-labelledby="coop-title">
+            <div class="eyebrow">Cooperative</div>
+            {% if membership %}
+                <h2 id="coop-title">{{ membership.cooperative_name }}</h2>
+                <dl class="kv" style="margin-top:10px;">
+                    <dt>Cooperative ID</dt><dd>{{ membership.cooperative_code }}</dd>
+                    <dt>Group</dt><dd>{{ me.group_name or "Not assigned" }}</dd>
+                    <dt>Membership</dt><dd><span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(membership.membership_status, 'bad') }}">{{ 'Member' if membership.membership_status == 'APPROVED' else membership.membership_status | capitalize }}</span></dd>
+                    {% if vstate and vstate.manager %}<dt>Manager</dt><dd>{{ vstate.manager.name }}</dd>{% endif %}
+                </dl>
+            {% else %}
+                <h2 id="coop-title">Not assigned</h2>
+                <p class="muted">Ask an administrator to assign your cooperative.</p>
+            {% endif %}
+        </section>
+
+        <!-- 8. MESSAGES -->
+        <section class="dd-card" aria-labelledby="msg-title">
+            <div class="eyebrow">Messages</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:6px;">
+                <div><div class="msg-count" id="msg-count">0</div><div class="muted" id="msg-title">No unread messages</div></div>
+                <a class="btn btn-light btn-sm" href="{{ url_for('chat.page') }}">OPEN CHAT</a>
             </div>
+        </section>
+
+        <!-- 9. PROFILE -->
+        <section class="dd-card" aria-labelledby="profile-title">
+            <div class="eyebrow">Driver profile</div>
+            <h2 id="profile-title">{{ me.username }}</h2>
+            <dl class="kv" style="margin-top:10px;">
+                <dt>Driver ID</dt><dd>{{ me.code }}</dd>
+                <dt>Phone</dt><dd>{{ me.phone or "Not provided" }}</dd>
+                <dt>Email</dt><dd>{{ me.email }} {% if current_user.email_verified %}<span class="badge ok">✓ Email verified</span>{% else %}<span class="badge warn">Not verified</span>{% endif %}</dd>
+                <dt>Cooperative</dt><dd>{{ membership.cooperative_name if membership else "—" }}</dd>
+                <dt>Group</dt><dd>{{ me.group_name or "—" }}</dd>
+                <dt>Verification</dt><dd>{{ sd_badge(badge) }}</dd>
+            </dl>
+        </section>
+    </div>
+</div>
+
+<p class="disclaimer">SafeDrive AI is an AI-assisted safety aid. It does not measure blood alcohol concentration and
+   is not a medical or legal test. You remain responsible for deciding whether you are fit to drive.
+   <a href="{{ url_for('account.terms') }}">Terms</a> · <a href="{{ url_for('account.privacy') }}">Privacy</a></p>
+
+<!-- Safety alert: shown when the temporal assessment becomes POTENTIALLY_NOT_SOBER -->
+<div class="overlay" id="alert" hidden role="alertdialog" aria-modal="true" aria-labelledby="alert-title">
+    <div class="alert-box">
+        <div class="tag">⚠ SAFETY ALERT</div>
+        <h2 id="alert-title">POTENTIALLY NOT SOBER</h2>
+        <p>Our AI detected visual patterns that may be associated with alcohol-related impairment.</p>
+        <p><b>Please do not continue driving if you are not safe to drive.</b></p>
+        <p class="muted">AI confidence: <b id="alert-confidence">—</b></p>
+        <button class="btn btn-danger" id="btn-assist" type="button">REQUEST UMUSARE ASSISTANCE</button>
+        <button class="btn btn-light" id="btn-continue" type="button">CONTINUE MONITORING</button>
+        <p class="assist-msg" id="alert-assist-status" role="status" aria-live="assertive"></p>
+    </div>
+</div>
+
+<!-- Manual (driver-initiated) support: confirmation; does not change the AI assessment -->
+<div class="confirm" id="support-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="support-title">
+    <div class="box">
+        <h2 id="support-title">Request Umusare support</h2>
+        <p><b>Do you want to request assistance from a nearby verified Umusare?</b></p>
+        <p class="muted">You can request assistance even if SafeDrive AI has not detected potential alcohol-related impairment.</p>
+        <div class="actions">
+            <button class="btn btn-primary" id="btn-support-yes" type="button">Yes, request support</button>
+            <button class="btn btn-light" id="btn-support-no" type="button">Not now</button>
         </div>
     </div>
-
-    <!-- Reports Tab -->
-    <div id="reportsTab" class="tab-content">
-        <div class="section">
-            <div class="box" style="width:100%;">
-                <h3>Recent Detections</h3>
-                <button onclick="fetchReports()">Refresh Reports</button>
-                <button class="print-btn" onclick="printReports()">🖨 Print</button>
-                <table id="reportsTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Driver</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th>Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="5" style="text-align:center;">Loading...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
 </div>
 
 <script>
-let cooldown=false, liveDetectionRunning=false, liveInterval=null, countdownInterval=null;
-
-// Tab switching
-function switchTab(tabId, btn){
-    document.querySelectorAll(".tab-content").forEach(tc=>tc.classList.remove("active"));
-    document.getElementById(tabId).classList.add("active");
-    document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-}
-
-// Fetch reports from database
-async function fetchReports(){
-    try {
-        const res = await fetch("/driver/reports_json");
-        const data = await res.json();
-        const tbody = document.querySelector("#reportsTable tbody");
-        tbody.innerHTML = "";
-        if(data.length === 0){
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No detections yet.</td></tr>';
-        } else {
-            data.forEach(r=>{
-                const tr = document.createElement("tr");
-                tr.innerHTML = `<td>${r.id}</td>
-                                <td>${r.username}</td>
-                                <td>${r.detection_type}</td>
-                                <td>${r.status}</td>
-                                <td>${r.timestamp}</td>`;
-                tbody.appendChild(tr);
-            });
-        }
-    } catch(err){
-        console.error(err);
-        document.querySelector("#reportsTable tbody").innerHTML = '<tr><td colspan="5" style="text-align:center;">Error fetching reports.</td></tr>';
+(() => {
+    const $ = id => document.getElementById(id);
+    const STATUS_URL = "{{ url_for('monitoring.status') }}";
+    const MODEL_URL = "{{ url_for('monitoring.model') }}";
+    const BASE = "{{ url_for('monitoring.dashboard') }}";
+    const A = "{{ url_for('assistance.create') }}";               // /assistance/requests
+    const token = document.querySelector('meta[name="csrf-token"]').content;
+    const UNCERTAIN_REASONS = {
+        insufficient_valid_frames: "the face is not visible clearly enough",
+        too_many_invalid_frames: "the face detection is unstable",
+        low_model_confidence: "the AI confidence is low",
+        ambiguous_temporal_score: "the recent results are mixed",
+    };
+    let lastAssessment = null, alertDismissed = false, audioCtx = null, monitoringOn = false;
+    // Status tiles: AI safety, monitoring, operational account status and assistance are separate concepts.
+    const AI_LABEL = { SOBER: "SOBER", UNCERTAIN: "UNCERTAIN", POTENTIALLY_NOT_SOBER: "POTENTIALLY NOT SOBER", ASSESSING: "ASSESSING" };
+    const AI_LED = { SOBER: "on", UNCERTAIN: "warn", POTENTIALLY_NOT_SOBER: "bad", ASSESSING: "info" };
+    const ASSIST_LABEL = { REQUESTED: "REQUESTED", MATCHING: "MATCHING", ACCEPTED: "UMUSARE COMING", DRIVER_CONNECTED: "JOURNEY ACTIVE",
+                           COMPLETED: "COMPLETED", CANCELLED: "CANCELLED", NO_UMUSARE_AVAILABLE: "NO UMUSARE AVAILABLE" };
+    function tile(name, text, led) { $("tile-" + name).textContent = text; $("tile-" + name + "-led").className = "led " + (led || ""); }
+    function updateOps() {
+        const active = !!(req && ACTIVE.includes(req.status));
+        tile("ops", !navigator.onLine ? "OFFLINE" : active ? "ASSISTANCE ACTIVE" : monitoringOn ? "MONITORING" : "ONLINE",
+             !navigator.onLine ? "" : active ? "info" : "on");
     }
-}
+    function updateAssistTile(r) {
+        if (!r) { tile("assist", "None", ""); $("tile-assist-sub").textContent = "No active assistance request."; updateOps(); return; }
+        const payOpen = r.status === "COMPLETED" && r.payment && r.payment.status !== "PAYMENT_COMPLETED";
+        tile("assist", payOpen ? r.payment.status.replace(/_/g, " ") : (ASSIST_LABEL[r.status] || r.status),
+             ACTIVE.includes(r.status) || payOpen ? "info" : (r.status === "NO_UMUSARE_AVAILABLE" ? "bad" : ""));
+        $("tile-assist-sub").textContent = (r.assistance_id || "") +
+            (ACTIVE.includes(r.status) || payOpen ? "" : " · no active assistance request");
+        updateOps();
+    }
 
-// Print Reports
-function printReports(){
-    const tableContent = document.getElementById("reportsTable").outerHTML;
-    const newWin = window.open("");
-    newWin.document.write("<html><head><title>Print Reports</title></head><body>");
-    newWin.document.write(tableContent);
-    newWin.document.write("</body></html>");
-    newWin.document.close();
-    newWin.print();
-}
-
-// Save detection
-function saveDetection(payload){
-    fetch("/save_detection", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
-    });
-}
-
-// Toggle mutual exclusivity
-function toggleUploadLiveButtons(disable){
-    document.querySelector(".detect-btn").disabled = disable;
-    document.querySelector(".start-camera").disabled = disable || liveDetectionRunning;
-}
-
-// Upload Image Detection
-document.getElementById("uploadForm").onsubmit = function(e){
-    e.preventDefault();
-    if(cooldown || liveDetectionRunning) return alert("🚨 Cannot detect now.");
-
-    toggleUploadLiveButtons(true);
-
-    const fileInput=document.querySelector("input[name='file']");
-    const preview=document.getElementById("uploadedPreview");
-    const resultBox=document.getElementById("uploadResult");
-    preview.src=URL.createObjectURL(fileInput.files[0]);
-    preview.style.display="block";
-    resultBox.style.display="block";
-    resultBox.className="alert-msg alert-warning";
-    resultBox.innerHTML="⏳ Detecting...";
-
-    const formData = new FormData();
-    formData.append("file", fileInput.files[0]);
-
-    fetch("/upload_image",{method:"POST",body:formData})
-    .then(res=>res.json())
-    .then(data=>{
-        const time=new Date().toLocaleTimeString();
-        let statusText="";
-        if(data.status==="deprecated"){
-            resultBox.className="alert-msg alert-warning";
-            resultBox.innerHTML="⚠️ "+data.message;
-            toggleUploadLiveButtons(false);
-            return;
+    async function api(url, method = "GET", body) {
+        let res;
+        try {
+            res = await fetch(url, { method, cache: "no-store", credentials: "same-origin",
+                headers: { "Accept": "application/json", "Content-Type": "application/json", "X-CSRFToken": token },
+                body: body ? JSON.stringify(body) : undefined });
+        } catch (e) { throw new Error("Cannot reach SafeDrive. Check your connection and try again."); }
+        if (res.redirected && res.url.includes("/login")) throw new Error("Your session has expired. Please sign in again.");
+        const isJson = (res.headers.get("Content-Type") || "").includes("application/json");
+        const data = isJson ? await res.json().catch(() => null) : null;
+        if (!res.ok) {
+            const msg = data && data.error;
+            if (msg && /csrf/i.test(msg)) throw new Error("Security check failed (CSRF token). Reload the page and try again.");
+            throw new Error(msg || "Request failed (HTTP " + res.status + ").");
         }
-       if(data.status==="no_person"){
-    resultBox.className="alert-msg alert-warning";
-    resultBox.innerHTML="⚠️ Align your face correctly!";
-    statusText="No Person Detected";
-}
- else if(data.status==="alcoholic"){
-            resultBox.className="alert-msg alert-danger";
-            resultBox.innerHTML="🚨 Alcohol Detected!";
-            statusText="Alcohol Detected";
-            cooldown=true;
-            setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
-        } else {
-            // Never treat an unrecognised response as "safe".
-            resultBox.className="alert-msg alert-warning";
-            resultBox.innerHTML="⚠️ No result available";
-            statusText="No Result";
+        if (data === null) throw new Error("Unexpected response from the server (HTTP " + res.status + ").");
+        return data;
+    }
+
+    // ------------------------------------------------------------ audio warning (Web Audio, no files)
+    function unlockAudio() {
+        try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+    }
+    function warningSound() {
+        if (!audioCtx) return;
+        const t0 = audioCtx.currentTime;
+        for (let i = 0; i < 3; i++) {
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = "square"; osc.frequency.value = 880;
+            gain.gain.setValueAtTime(0.0001, t0 + i * 0.5);
+            gain.gain.exponentialRampToValueAtTime(0.25, t0 + i * 0.5 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.5 + 0.35);
+            osc.connect(gain).connect(audioCtx.destination);
+            osc.start(t0 + i * 0.5); osc.stop(t0 + i * 0.5 + 0.4);
         }
-        saveDetection({detection_type:"Upload", status:statusText, timestamp:time});
-        toggleUploadLiveButtons(false);
-    });
-};
+    }
 
-// Live Detection
-function startLiveDetection(){
-    if(liveDetectionRunning || cooldown) return alert("Cannot start detection now.");
-    liveDetectionRunning=true;
-    toggleUploadLiveButtons(true);
+    // ------------------------------------------------------------ sobriety status
+    function setCard(kind, title, text) {
+        $("status-card").className = "status-card " + kind;
+        $("status-eyebrow").textContent = kind === "alert" ? "⚠ SAFETY ALERT" : "AI safety status";
+        $("hero-alert-note").hidden = kind !== "alert";
+        $("btn-hero-assist").hidden = kind !== "alert";
+        $("status-title").textContent = title;
+        $("status-text").textContent = text;
+    }
+    function render(s) {
+        const running = !!s.running;
+        $("meta-monitoring").textContent = running ? "ACTIVE" : "OFF";
+        $("meta-camera").textContent = running ? (s.camera_status === "CONNECTED" ? "● ACTIVE" : s.camera_status.replace(/_/g, " ")) : "—";
+        $("btn-start").hidden = running; $("btn-stop").hidden = !running;
+        const a = s.assessment;
+        const showConf = a && a.confidence !== null && (a.assessment === "SOBER" || a.assessment === "POTENTIALLY_NOT_SOBER");
+        $("meta-confidence-wrap").hidden = !showConf;
+        if (showConf) $("meta-confidence").textContent = Math.round(a.confidence * 100) + "%";
 
-    const video=document.getElementById("camera");
-    const resultBox=document.getElementById("liveResult");
-    const startBtn=document.querySelector(".start-camera");
-    const stopBtn=document.querySelector(".stop-camera");
-    const countdownOverlay=document.getElementById("countdownOverlay");
+        if (!running) { setCard("", "Monitoring is off", "Start monitoring to let SafeDrive AI assess the driver camera."); }
+        else if (s.camera_status !== "CONNECTED") { setCard("uncertain", "Camera unavailable", "SafeDrive AI cannot see the driver. Check the camera connection."); }
+        else if (!a) { setCard("uncertain", "AI assessment unavailable", "The alcohol-assessment model is not available. Camera monitoring continues."); }
+        else if (a.assessment === "ASSESSING") { setCard("assessing", "Assessing…", "Please look towards the camera for a moment."); }
+        else if (a.assessment === "SOBER") { setCard("sober", "🟢 SOBER", "No visual patterns associated with alcohol-related impairment are detected right now. " +
+                                                      "You remain responsible for deciding whether you are fit to drive."); }
+        else if (a.assessment === "UNCERTAIN") {
+            const why = a.reasons.map(r => UNCERTAIN_REASONS[r]).filter(Boolean);
+            setCard("uncertain", "🟡 UNCERTAIN", "Unable to reliably assess driver. Please improve camera visibility." +
+                    (why.length ? " Possible reason: " + why.join(", ") + "." : ""));
+        } else if (a.assessment === "POTENTIALLY_NOT_SOBER") {
+            setCard("alert", "⚠ POTENTIALLY NOT SOBER", "AI detected visual patterns that may be associated with alcohol-related impairment.");
+        }
 
-    video.style.display="block";
-    resultBox.style.display="block";
-    startBtn.disabled=true;
-    stopBtn.disabled=false;
+        // Alert on entering POTENTIALLY_NOT_SOBER; "Continue monitoring" hides it until the state changes again.
+        const current = running && a ? a.assessment : null;
+        if (current === "POTENTIALLY_NOT_SOBER" && lastAssessment !== "POTENTIALLY_NOT_SOBER") {
+            alertDismissed = false; warningSound();
+        }
+        $("alert").hidden = !(current === "POTENTIALLY_NOT_SOBER" && !alertDismissed);
+        if (current === "POTENTIALLY_NOT_SOBER") $("alert-confidence").textContent = Math.round((a.confidence || 0) * 100) + "%";
+        lastAssessment = current;
+        tile("ai", current ? (AI_LABEL[current] || current) : "—", AI_LED[current]);
+        tile("mon", running ? "ACTIVE" : "OFF", running ? "on" : "");
+        $("tile-cam").textContent = running ? "Camera " + (s.camera_status === "CONNECTED" ? "active" :
+            String(s.camera_status || "").replace(/_/g, " ").toLowerCase()) : "Camera not in use";
+        monitoringOn = running; updateOps();
+    }
+    async function poll() {
+        if (document.hidden) return;
+        try { render(await api(STATUS_URL)); } catch (e) { /* keep last state on a network blip */ }
+    }
+    async function control(action) {
+        unlockAudio();                       // browsers only allow sound after a user gesture
+        $("control-error").textContent = "";
+        try { await api(BASE + action, "POST"); } catch (e) { $("control-error").textContent = e.message; }
+        poll();
+    }
 
-    let countdown=5;
-    countdownOverlay.style.display="block";
-    countdownOverlay.innerText=`⏳ Hold still... ${countdown}s`;
+    // ------------------------------------------------------------ assistance
+    const ACTIVE = ["REQUESTED", "MATCHING", "ACCEPTED", "DRIVER_CONNECTED"];
+    const SHARING = ["ACCEPTED", "DRIVER_CONNECTED"];
+    let req = null, watchId = null, lastSent = 0, assistTimer = null, requesting = false, notice = null;
 
-    countdownInterval=setInterval(()=>{
-        countdown--;
-        countdownOverlay.innerText=`⏳ Hold still... ${countdown}s`;
-        if(countdown<=0){
-            clearInterval(countdownInterval);
-            countdownOverlay.style.display="none";
+    const LOCATION_ERRORS = {
+        1: "Location access was denied. Allow location access to request nearby Umusare assistance " +
+           "(click the lock icon in the address bar → Site settings → Location → Allow), then try again.",
+        2: "Your location is unavailable right now. Turn on location services and try again.",
+        3: "Getting your location took too long. Try again, preferably near a window or outdoors.",
+    };
+    function position() {
+        return new Promise((resolve, reject) => {
+            if (!window.isSecureContext) return reject(new Error(
+                "Location only works on a secure page. Open SafeDrive at http://127.0.0.1:5000 (or over HTTPS) and try again."));
+            if (!navigator.geolocation) return reject(new Error("This browser cannot provide your location."));
+            navigator.geolocation.getCurrentPosition(p => resolve(p.coords),
+                err => reject(new Error(LOCATION_ERRORS[err.code] || "Could not get your location.")),
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 });
+        });
+    }
+    // Feedback is shown where the driver is looking: in the safety alert (if open) and in the assistance panel.
+    function showNotice(text, isError) {
+        notice = isError ? text : null;
+        const s = $("alert-assist-status");
+        s.textContent = text; s.className = "assist-msg" + (isError ? " err" : "");
+        $("assist").hidden = false;
+        $("assist-error").textContent = isError ? text : "";
+        if (!isError) setAssist("", "Requesting assistance", text);
+    }
+    function setRequestButtons(disabled) {
+        ["btn-assist", "btn-hero-assist", "btn-request-card", "btn-again", "btn-support-yes"].forEach(id => { $(id).disabled = disabled; });
+    }
+    async function requestAssistance(trigger) {
+        if (requesting) return;
+        requesting = true; setRequestButtons(true);
+        $("support-confirm").hidden = true;
+        try {
+            showNotice("Allow location access to request nearby Umusare assistance.", false);
+            let c;
+            try { c = await position(); } catch (e) { showNotice(e.message, true); return; }
+            showNotice("Sending your request…", false);
+            let r;
+            try { r = await api(A, "POST", { lat: c.latitude, lon: c.longitude, accuracy: c.accuracy, trigger }); }
+            catch (e) { showNotice(e.message, true); refreshAssist(); return; }
+            notice = null; $("alert-assist-status").textContent = "";
+            $("alert").hidden = true; alertDismissed = true;   // the assistance panel takes over
+            renderAssist(r);
+            $("assist").scrollIntoView({ behavior: "smooth", block: "center" });
+        } finally { requesting = false; setRequestButtons(false); if (req) renderAssist(req); }
+    }
+    function setAssist(kind, title, text) {
+        $("assist").className = "panel assist " + kind;
+        $("assist-title").textContent = title; $("assist-text").textContent = text;
+    }
+    let mapObj = null;
+    const fmtKm = km => km === null || km === undefined ? "—" : Number(km).toFixed(km < 10 ? 2 : 1) + " km";
+    function ensureMap() {
+        if (!mapObj && window.SafeMap && window.L) mapObj = window.SafeMap($("assist-map-el"));
+        return mapObj;
+    }
+    function step(r) {
+        if (r.status === "COMPLETED") return r.payment && r.payment.status === "PAYMENT_COMPLETED" ? 6 : 5;
+        return { REQUESTED: 1, MATCHING: 1, ACCEPTED: 2, DRIVER_CONNECTED: 3 }[r.status] || 0;
+    }
+    function renderTimeline(r) {
+        const n = ["CANCELLED", "NO_UMUSARE_AVAILABLE"].includes(r.status) ? 1 : step(r);
+        document.querySelectorAll("#assist-steps li").forEach(li => {
+            const i = Number(li.dataset.step);
+            li.className = i < n ? "done" : (i === n ? "now" : "");
+        });
+    }
+    function claimsFor(p) {
+        const v = p.verification, out = [];
+        if (v.identity_verified) out.push("Identity verified by SafeDrive" + (v.verified_at ? " (" + v.verified_at.slice(0, 10) + ")" : ""));
+        if (v.membership_approved) out.push("Cooperative membership approved");
+        if (v.account_active) out.push("Active account");
+        return out;
+    }
+    function renderIdentity(u) {
+        const p = u.profile;
+        $("u-avatar").textContent = p.initials;
+        $("u-name").textContent = p.name;
+        $("u-claims").replaceChildren(...claimsFor(p).concat(["Currently assisting you"]).map(t => {
+            const li = document.createElement("li"); li.textContent = t; return li; }));
+        $("u-coop").textContent = p.cooperative || "—";
+        $("u-id").textContent = p.umusare_id;
+        $("u-member").textContent = p.member_id || "—";
+        $("u-phone").textContent = p.phone || "Not registered";
+        $("u-email").textContent = p.email || "—";
+        $("u-distance").textContent = fmtKm(u.distance_km);
+        $("u-eta").textContent = u.eta_min ? "~" + u.eta_min + " min (estimate)" : (req.status === "DRIVER_CONNECTED" ? "Arrived" : "—");
+        $("btn-call").hidden = !p.phone;
+        if (p.phone) $("btn-call").href = "tel:" + p.phone;
+        verifyData = p;
+    }
+    let verifyData = null;
+    function openVerify() {
+        if (!verifyData) return;
+        const v = verifyData.verification, items = claimsFor(verifyData);
+        if (v.eligible) items.push("Eligible to provide assistance");
+        items.push("Currently assisting you");
+        $("verify-who").textContent = verifyData.name + " · " + verifyData.umusare_id + (verifyData.cooperative ? " · " + verifyData.cooperative : "");
+        $("verify-list").replaceChildren(...items.map(t => { const li = document.createElement("li"); li.textContent = t; return li; }));
+        $("verify-modal").hidden = false; $("btn-verify-close").focus();
+    }
+    function renderMap(r) {
+        const u = r.umusare, sharing = SHARING.includes(r.status);
+        const before = ["REQUESTED", "MATCHING"].includes(r.status);
+        const wanted = sharing || before;
+        $("assist-grid").hidden = !wanted;
+        if (!wanted) { $("assist-map-el").hidden = true; $("map-legend").hidden = true; return; }
+        const m = ensureMap();
+        const ok = !!m && !m.failed;                 // Leaflet loaded and the tile provider answered
+        $("assist-map-el").hidden = !ok;
+        $("map-fallback").hidden = ok;
+        $("map-legend").hidden = !ok || !sharing;
+        if (ok) m.update(sharing ? { driver: r.my_location, umusare: u && u.location, approx: null }
+                                : { approx: r.approx_area, driver: null, umusare: null });
+    }
+    function renderFare(r) {
+        const j = r.journey;
+        $("fare-box").hidden = !j;
+        if (j) { $("fare-amount").textContent = j.estimated_fare_label; $("fare-km").textContent = fmtKm(j.distance_so_far_km);
+                 $("fare-rate").textContent = j.rate_label; }
+    }
+    function renderPayment(r) {
+        const pay = r.payment;
+        const show = r.status === "COMPLETED" && pay && pay.status !== "PAYMENT_COMPLETED";
+        $("pay-box").hidden = !show;
+        $("summary-box").hidden = !(r.status === "COMPLETED" && pay && pay.status === "PAYMENT_COMPLETED");
+        if (!pay) return;
+        $("pay-amount").textContent = pay.amount_label; $("pay-amount2").textContent = pay.amount_label;
+        $("pay-km").textContent = fmtKm(pay.final_distance_km); $("pay-rate").textContent = pay.rate_label || "—";
+        $("pay-name").textContent = pay.payee ? pay.payee.name : "—";
+        $("pay-phone").textContent = pay.pay_to_phone || "No registered phone — contact your cooperative";
+        $("pay-phone2").textContent = pay.pay_to_phone || "your Umusare";
+        const st = pay.status;
+        $("pay-box").className = "pay-box" + (st === "PAYMENT_PENDING" ? " required" : (st === "PAYMENT_SENT" ? " ok" : ""));
+        $("pay-k").textContent = st === "PAYMENT_PENDING" ? "PAYMENT REQUIRED" : (st === "PAYMENT_SENT" ? "PAYMENT SENT" : "PAYMENT PROBLEM REPORTED");
+        $("pay-status").textContent = st === "PAYMENT_SENT"
+            ? "You marked this payment as sent. Waiting for " + (pay.payee ? pay.payee.name : "your Umusare") + " to confirm it was received."
+            : st === "PAYMENT_DISPUTED" ? "Your Umusare has not received the payment yet: " + (pay.dispute_note || "") +
+              ". Check the number and amount, then confirm again." : "";
+        $("btn-pay-now").hidden = st !== "PAYMENT_PENDING" || !$("pay-instructions").hidden;
+        $("btn-pay-sent").hidden = !(st === "PAYMENT_DISPUTED" || (st === "PAYMENT_PENDING" && !$("pay-instructions").hidden));
+        $("btn-pay-sent").textContent = st === "PAYMENT_DISPUTED" ? "I HAVE SENT THE PAYMENT" : "PAYMENT SENT";
+        if (st !== "PAYMENT_PENDING") $("pay-instructions").hidden = st !== "PAYMENT_DISPUTED";
+        if (r.summary && st === "PAYMENT_COMPLETED") {
+            $("sum-km").textContent = fmtKm(pay.final_distance_km); $("sum-fare").textContent = pay.amount_label;
+            $("sum-umusare").textContent = pay.payee ? pay.payee.name : "—";
+            $("sum-coop").textContent = pay.payee ? (pay.payee.cooperative || "—") : "—";
+            $("sum-id").textContent = r.summary.assistance_id;
+            $("sum-duration").textContent = r.summary.duration_min ? r.summary.duration_min + " min" : "—";
+            $("rate-box").hidden = r.summary.rating !== null;
+            $("rated-msg").hidden = r.summary.rating === null;
+            $("rated-msg").textContent = r.summary.rating ? "Thank you — you rated this assistance " + r.summary.rating + "/5." : "";
+        }
+    }
+    function renderAssist(r) {
+        req = r;
+        updateAssistTile(r);
+        if (!r) { if (!notice && !requesting) $("assist").hidden = true; stopSharing(); return; }
+        $("assist").hidden = false;
+        $("assist-id").textContent = r.assistance_id || "";
+        $("assist-type").textContent = r.type === "AI_TRIGGERED" ? "Type: requested from the AI safety alert"
+            : "Type: driver-initiated support (does not change your AI assessment)";
+        renderTimeline(r);
+        const u = r.umusare;
+        $("u-card").hidden = !u;
+        if (u) renderIdentity(u);
+        renderMap(r); renderFare(r); renderPayment(r);
+        $("assist-fallback").hidden = r.status !== "NO_UMUSARE_AVAILABLE";
+        $("btn-cancel").hidden = !["REQUESTED", "MATCHING", "ACCEPTED"].includes(r.status);
+        $("btn-connected").hidden = r.status !== "ACCEPTED";
+        $("btn-view-map").hidden = !(u && u.location);
+        if (!u) $("btn-call").hidden = true;
+        const paymentOpen = r.status === "COMPLETED" && r.payment && r.payment.status !== "PAYMENT_COMPLETED";
+        $("btn-again").hidden = ACTIVE.includes(r.status) || paymentOpen;
+        $("btn-request-card").disabled = requesting || ACTIVE.includes(r.status) || paymentOpen;
 
-            navigator.mediaDevices.getUserMedia({video:true})
-            .then(stream=>{
-                video.srcObject=stream;
-                let sampleCount=0;
-                liveInterval=setInterval(()=>{
-                    if(cooldown) return;
-                    sendLiveFrame(video,resultBox);
-                    sampleCount++;
-                    if(sampleCount>=3) stopLiveDetection();
-                },700);
-            }).catch(err=>{
-                liveDetectionRunning=false;
-                startBtn.disabled=false;
-                stopBtn.disabled=true;
-                toggleUploadLiveButtons(false);
-                alert("Camera access denied: "+err);
+        if (r.status === "REQUESTED" || r.status === "MATCHING") {
+            setAssist("", "Finding a nearby verified Umusare...",
+                      "Searching within " + (r.search_radius_km || "—") + " km, including other cooperatives. " +
+                      (r.umusare_contacted ? r.umusare_contacted + " Umusare notified." : "") +
+                      " Only your approximate area is shared until an Umusare accepts.");
+        } else if (r.status === "ACCEPTED") {
+            setAssist("ok", "ASSISTANCE ACTIVE · UMUSARE IS COMING", "Your live location is now shared with " + u.name + " only.");
+        } else if (r.status === "DRIVER_CONNECTED") {
+            setAssist("ok", "● UMUSARE ARRIVED · JOURNEY ACTIVE", "Your Umusare is with you. The journey distance is being measured; your Umusare completes the journey at the destination.");
+        } else if (r.status === "COMPLETED") {
+            const ps = r.payment ? r.payment.status : "PAYMENT_COMPLETED";      // no fare recorded: nothing to pay
+            setAssist(ps === "PAYMENT_COMPLETED" ? "done" : "ok",
+                      ps === "PAYMENT_COMPLETED" ? "ASSISTANCE COMPLETED" : "Journey completed",
+                      "Location sharing has stopped." + (ps === "PAYMENT_COMPLETED" ? " Thank you for staying safe." : " Please complete the payment below."));
+        } else if (r.status === "CANCELLED") {
+            setAssist("done", "Request cancelled", "Location sharing has stopped.");
+        } else if (r.status === "NO_UMUSARE_AVAILABLE") {
+            setAssist("bad", "No Umusare available", "");
+            $("fb-radius").textContent = r.search_radius_km;
+            $("fb-contacts").innerHTML = "";
+            (r.fallback_contacts || []).forEach(c => {
+                const li = document.createElement("li");
+                li.textContent = "Cooperative manager: " + c.name + (c.phone ? " — " + c.phone : "");
+                $("fb-contacts").appendChild(li);
             });
         }
-    },1000);
-}
+        if (SHARING.includes(r.status)) startSharing(); else stopSharing();
+        clearTimeout(assistTimer);
+        const pending = paymentOpen && ["PAYMENT_PENDING", "PAYMENT_SENT", "PAYMENT_DISPUTED"].includes(r.payment.status);
+        if (ACTIVE.includes(r.status) || pending) assistTimer = setTimeout(refreshAssist, 3000);
+    }
+    async function refreshAssist() {
+        try { renderAssist((await api(A + "/current")).request); }
+        catch (e) { clearTimeout(assistTimer); assistTimer = setTimeout(refreshAssist, 5000); }
+    }
+    // Live location: only while ACCEPTED / DRIVER_CONNECTED, at most every 10 s; stopped otherwise.
+    function startSharing() {
+        if (watchId !== null || !navigator.geolocation) return;
+        watchId = navigator.geolocation.watchPosition(p => {
+            if (!req || !SHARING.includes(req.status) || Date.now() - lastSent < 10000) return;
+            lastSent = Date.now();
+            api(A + "/" + req.id + "/location", "POST", { lat: p.coords.latitude, lon: p.coords.longitude,
+                accuracy: p.coords.accuracy }).catch(() => stopSharing());
+        }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+    }
+    function stopSharing() {
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    }
+    async function act(path, body) {
+        $("assist-error").textContent = "";
+        try { await api(A + "/" + req.id + "/" + path, "POST", body); } catch (e) { $("assist-error").textContent = e.message; }
+        refreshAssist();
+    }
+    let stars = 0;
 
-function sendLiveFrame(video,resultBox){
-    const canvas=document.createElement("canvas");
-    canvas.width=video.videoWidth;
-    canvas.height=video.videoHeight;
-    canvas.getContext("2d").drawImage(video,0,0,canvas.width,canvas.height);
+    $("btn-start").addEventListener("click", () => control("start"));
+    $("btn-stop").addEventListener("click", () => control("stop"));
+    $("btn-continue").addEventListener("click", () => { alertDismissed = true; $("alert").hidden = true; });
+    // AI-triggered: from the POTENTIALLY_NOT_SOBER alert (the server verifies the live assessment).
+    $("btn-assist").addEventListener("click", () => requestAssistance("AI_TRIGGERED"));
+    $("btn-hero-assist").addEventListener("click", () => requestAssistance("AI_TRIGGERED"));
+    document.addEventListener("safedrive:unread", e => {
+        const n = (e.detail && e.detail.messages) || 0;
+        $("msg-count").textContent = n;
+        $("msg-title").textContent = n ? (n === 1 ? "1 unread message" : n + " unread messages") : "No unread messages";
+    });
+    window.addEventListener("online", updateOps);
+    window.addEventListener("offline", updateOps);
+    // Manual support: confirmation first; never changes the AI assessment.
+    const askSupport = () => { $("support-confirm").hidden = false; $("btn-support-yes").focus(); };
+    $("btn-request-card").addEventListener("click", askSupport);
+    $("btn-again").addEventListener("click", askSupport);
+    $("btn-support-yes").addEventListener("click", () => requestAssistance("DRIVER_INITIATED"));
+    $("btn-support-no").addEventListener("click", () => { $("support-confirm").hidden = true; });
+    $("btn-cancel").addEventListener("click", () => act("cancel"));
+    $("btn-connected").addEventListener("click", () => act("connect"));
+    // Payment: the amount and phone shown come from the server; nothing here can change them.
+    $("btn-pay-now").addEventListener("click", () => { $("pay-instructions").hidden = false; renderAssist(req); });
+    $("btn-pay-sent").addEventListener("click", () => {
+        if (confirm("Confirm that you have sent " + req.payment.amount_label + " to " + (req.payment.pay_to_phone || "your Umusare") + "?"))
+            act("payment-sent");
+    });
+    $("btn-view-map").addEventListener("click", () => {
+        if (ensureMap()) { $("assist-map-el").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+        const l = req && req.umusare && req.umusare.location;
+        if (l) window.open("https://www.openstreetmap.org/?mlat=" + l.lat + "&mlon=" + l.lon + "#map=16/" + l.lat + "/" + l.lon, "_blank", "noopener");
+    });
+    $("u-badge").addEventListener("click", openVerify);
+    $("btn-verify-close").addEventListener("click", () => { $("verify-modal").hidden = true; $("u-badge").focus(); });
+    document.querySelectorAll("#stars button").forEach(b => b.addEventListener("click", () => {
+        stars = Number(b.dataset.v);
+        document.querySelectorAll("#stars button").forEach(x => x.className = Number(x.dataset.v) <= stars ? "on" : "");
+    }));
+    $("btn-rate").addEventListener("click", () => {
+        if (!stars) { $("assist-error").textContent = "Choose 1 to 5 stars first."; return; }
+        act("rate", { rating: stars, comment: $("rate-comment").value });
+    });
+    $("btn-report").addEventListener("click", () => act("report", { text: $("report-text").value }));
 
-    canvas.toBlob(blob=>{
-        const formData=new FormData();
-        formData.append("frame",blob,"frame.jpg");
-        fetch("/live_detect",{method:"POST",body:formData})
-        .then(res=>res.json())
-        .then(data=>{
-            const time=new Date().toLocaleTimeString();
-            let statusText="";
-            if(data.status==="deprecated"){
-                stopLiveDetection();  // sets its own text, so write the message after it
-                resultBox.className="alert-msg alert-warning";
-                resultBox.innerHTML="⚠️ "+data.message;
-                return;
-            }
-            if(data.status==="no_person"){
-                resultBox.className="alert-msg alert-danger";
-                resultBox.innerHTML="⚠️ No person detected!";
-                statusText="No Person Detected";
-            } else if(data.status==="alcoholic"){
-                resultBox.className="alert-msg alert-danger";
-                resultBox.innerHTML="🚨 Alcohol Detected!";
-                statusText="Alcohol Detected";
-                cooldown=true;
-                setTimeout(()=>{cooldown=false; toggleUploadLiveButtons(false);},10000);
-            } else {
-                // Never treat an unrecognised response as "safe".
-                resultBox.className="alert-msg alert-warning";
-                resultBox.innerHTML="⚠️ No result available";
-                statusText="No Result";
-            }
-            saveDetection({detection_type:"Live", status:statusText, timestamp:time});
-        });
-    },"image/jpeg");
-}
-
-function stopLiveDetection(){
-    liveDetectionRunning=false;
-    clearInterval(liveInterval);
-    clearInterval(countdownInterval);
-
-    const video=document.getElementById("camera");
-    if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
-
-    document.querySelector(".start-camera").disabled=false;
-    document.querySelector(".stop-camera").disabled=true;
-    document.getElementById("liveResult").innerHTML="Detection stopped.";
-    toggleUploadLiveButtons(false);
-}
-
-// Cleanup
-window.addEventListener("beforeunload",()=>{
-    if(liveInterval) clearInterval(liveInterval);
-    if(countdownInterval) clearInterval(countdownInterval);
-    const video=document.getElementById("camera");
-    if(video.srcObject) video.srcObject.getTracks().forEach(track=>track.stop());
-});
-
-// Auto-fetch reports on page load
-document.addEventListener("DOMContentLoaded", fetchReports);
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape") { $("verify-modal").hidden = true; $("support-confirm").hidden = true; }
+    });
+    fetch(MODEL_URL, { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(m => {
+        $("proto-notice").hidden = !(m && m.model && m.model.development_only && !m.model.is_mock);
+    }).catch(() => {});
+    poll();
+    setInterval(poll, 1000);
+    refreshAssist();
+})();
 </script>
-
-</body>
-</html>
+{% endblock %}

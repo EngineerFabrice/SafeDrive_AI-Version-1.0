@@ -1,38 +1,145 @@
 {% extends "base.html" %}
+{% block title %}Create account · SafeDrive AI{% endblock %}
 {% block content %}
-<div class="form-container">
-  <div class="form-card">
-    <h2>Create Your Account</h2>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-eyebrow">SafeDrive AI</div>
+    <h1>Create your SafeDrive account</h1>
+    <p class="auth-sub">For drivers and Umusare who belong to a SafeDrive cooperative.</p>
+    <div class="auth-steps" aria-label="Registration steps">
+      <span class="on">1 · Account details</span><span>2 · Verify email</span><span>3 · Cooperative verification</span>
+    </div>
     {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash {{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
+      {% for category, message in messages %}<div class="flash {{ category }}" role="alert">{{ message }}</div>{% endfor %}
     {% endwith %}
-    <form method="POST" action="{{ url_for('routes.register') }}">
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" name="username" id="username" placeholder="Enter your username" required>
+    {% if not cooperatives %}
+      <div class="flash warning">No cooperative is open for registration yet. Please contact the SafeDrive AI administrator.</div>
+    {% else %}
+    <form method="POST" action="{{ url_for('routes.register') }}" id="register-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="auth-grid">
+        <div class="field full">
+          <label for="username">Full name</label>
+          <input type="text" name="username" id="username" value="{{ form.username or '' }}" required minlength="3" maxlength="60" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" name="email" id="email" value="{{ form.email or '' }}" required maxlength="255" autocomplete="email">
+          <div class="hint">We will send a verification code to this address.</div>
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input type="tel" name="phone" id="phone" value="{{ form.phone or '' }}" placeholder="+250 78X XXX XXX" maxlength="30" autocomplete="tel">
+          <div class="hint">Umusare: drivers pay to this number.</div>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" name="password" id="password" required minlength="8" autocomplete="new-password">
+          <div class="hint">At least 8 characters, mixing letters with numbers or symbols.</div>
+        </div>
+        <div class="field">
+          <label for="confirm_password">Confirm password</label>
+          <input type="password" name="confirm_password" id="confirm_password" required minlength="8" autocomplete="new-password">
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input type="email" name="email" id="email" placeholder="Enter your email" required>
+      <div class="auth-section">
+        <h2>Your role</h2>
+        <div class="role-pick" role="radiogroup" aria-label="Role">
+          <label><input type="radio" name="role" value="driver" {{ 'checked' if form.role != 'umusare' }}>
+            <span><b>Driver</b><small>Safety monitoring and Umusare assistance when you need it.</small></span></label>
+          <label><input type="radio" name="role" value="umusare" {{ 'checked' if form.role == 'umusare' }}>
+            <span><b>Umusare</b><small>Support driver who assists drivers. Requires cooperative verification.</small></span></label>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" name="password" id="password" placeholder="Enter your password" required>
+      <div class="auth-section">
+        <h2>Cooperative</h2>
+        <div class="auth-grid">
+          <div class="field">
+            <label for="cooperative_id">Cooperative</label>
+            <select name="cooperative_id" id="cooperative_id" required>
+              <option value="">Select your cooperative</option>
+              {% for c in cooperatives %}
+                <option value="{{ c.id }}" {{ 'selected' if form.cooperative_id == c.id|string }}>{{ c.name }}{% if c.district %} · {{ c.district }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="group_id">Group <span style="font-weight:400; color:#6b7a8f;">(optional)</span></label>
+            <select name="group_id" id="group_id">
+              <option value="">No group / not sure</option>
+              {% for g in groups %}
+                <option value="{{ g.id }}" data-coop="{{ g.cooperative_id }}" {{ 'selected' if form.group_id == g.id|string }}>{{ g.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="hint">Your manager can change this later.</div>
+          </div>
+        </div>
       </div>
 
-      <button type="submit" class="btn-primary">Register</button>
+      <div class="auth-section" id="vehicle-section">
+        <h2>Vehicle</h2>
+        <div class="auth-grid">
+          <div class="field">
+            <label for="vehicle_plate_number">Vehicle plate number</label>
+            <input type="text" name="vehicle_plate_number" id="vehicle_plate_number" value="{{ form.vehicle_plate_number or '' }}"
+                   placeholder="RAB 123 A" maxlength="16" autocapitalize="characters" style="text-transform:uppercase;">
+            <div class="hint">Required before your cooperative can verify you.</div>
+          </div>
+          <div class="field">
+            <label for="vehicle_type">Vehicle type</label>
+            <select name="vehicle_type" id="vehicle_type">
+              <option value="">Select</option>
+              {% for k, label in vehicle_types.items() %}<option value="{{ k }}" {{ 'selected' if form.vehicle_type == k }}>{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="vehicle_make">Make</label>
+            <input type="text" name="vehicle_make" id="vehicle_make" value="{{ form.vehicle_make or '' }}" placeholder="Toyota" maxlength="40">
+          </div>
+          <div class="field">
+            <label for="vehicle_model">Model</label>
+            <input type="text" name="vehicle_model" id="vehicle_model" value="{{ form.vehicle_model or '' }}" placeholder="Prius" maxlength="40">
+          </div>
+        </div>
+      </div>
+
+      <label class="consent" for="accept_terms">
+        <input type="checkbox" name="accept_terms" id="accept_terms" value="1" required>
+        <span>I have read and agree to the SafeDrive AI <a href="{{ url_for('account.terms') }}" target="_blank" rel="noopener">Terms &amp; Conditions</a>
+          and <a href="{{ url_for('account.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+      </label>
+
+      <button type="submit" class="btn-solid">Create account</button>
     </form>
-
-    <p class="form-footer">
-      Already have an account? 
-      <a href="{{ url_for('routes.login') }}">Login here</a>
-    </p>
+    {% endif %}
+    <p class="auth-foot">Already have an account? <a href="{{ url_for('routes.login') }}">Sign in</a></p>
   </div>
 </div>
+<script>
+(() => {
+  const coop = document.getElementById("cooperative_id"), group = document.getElementById("group_id");
+  const vehicle = document.getElementById("vehicle-section");
+  if (!coop) return;
+  function filterGroups() {
+    let any = false;
+    for (const o of group.options) {
+      if (!o.dataset.coop) continue;
+      const ok = o.dataset.coop === coop.value;
+      o.hidden = !ok; o.disabled = !ok; any = any || ok;
+      if (!ok && o.selected) group.value = "";
+    }
+    group.disabled = !any;
+  }
+  function toggleVehicle() {
+    const role = document.querySelector('input[name="role"]:checked');
+    vehicle.hidden = !(role && role.value === "driver");
+  }
+  coop.addEventListener("change", filterGroups);
+  document.querySelectorAll('input[name="role"]').forEach(r => r.addEventListener("change", toggleVehicle));
+  filterGroups(); toggleVehicle();
+})();
+</script>
 {% endblock %}

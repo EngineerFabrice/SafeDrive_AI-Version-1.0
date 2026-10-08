@@ -1,0 +1,19 @@
+{# The blue SafeDrive badge (website/badges.py). It shows its basis on hover / focus / tap and never claims
+   that anyone is safe to drive. `b` is badges.evaluate(...) output. #}
+{% macro sd_badge(b) -%}
+{% if b and b.applies %}
+<span class="sd-badge {{ '' if b.verified else 'off' }}" tabindex="0" role="note"
+      aria-label="{{ 'Verified by SafeDrive' if b.verified else 'Not yet verified by SafeDrive' }}">
+    {% if b.verified %}<span class="sd-tick" aria-hidden="true">✓</span> VERIFIED{% else %}<span aria-hidden="true">○</span> NOT YET VERIFIED{% endif %}
+    <span class="sd-pop" role="tooltip">
+        <b>{{ "Verified by SafeDrive" if b.verified else "SafeDrive verification" }}</b>
+        <span class="sd-list">{% for label, ok in b.checks %}<span class="{{ 'ok' if ok else 'no' }}">{{ "✓" if ok else "○" }} {{ label }}</span>{% endfor %}</span>
+        <small>Not a government, licensing or medical certification, and not a guarantee of driving safety.</small>
+    </span>
+</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro state_chip(label, value, good) -%}
+<span class="state-chip {{ 'good' if good else 'pending' }}"><span class="k">{{ label }}</span><span class="v">{{ "✓ " if good }}{{ value }}</span></span>
+{%- endmacro %}

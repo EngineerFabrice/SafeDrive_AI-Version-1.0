@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block title %}Drivers{% endblock %}
+{% block heading %}Drivers{% endblock %}
+{% block content %}
+<section class="panel">
+    <p class="muted" style="margin-bottom:12px;">AI monitoring status is shown read-only. Administrators cannot change an
+        AI sobriety assessment.</p>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Driver</th><th>ID</th><th>Plate</th><th>Phone</th><th>Email</th><th>Cooperative</th><th>Group</th><th>Membership</th><th>Verification</th>
+            <th>Account</th><th>AI monitoring</th><th>Active assistance</th><th>Completed</th><th>Registered</th><th></th></tr></thead>
+        <tbody>
+        {% for d in drivers %}
+            <tr>
+                <td><a href="{{ url_for('admin_mgmt.driver_detail', user_id=d.id) }}"><b>{{ d.username }}</b></a></td>
+                <td class="muted">{{ d.code }}</td>
+                <td>{% if d.vehicle_plate_number %}<b>{{ d.vehicle_plate_number }}</b>{% else %}<span class="badge warn">Missing</span>{% endif %}</td>
+                <td>{{ d.phone or "—" }}</td>
+                <td>{{ d.email }}{% if not d.email_verified_at %} <span class="badge">unverified</span>{% endif %}</td>
+                <td>{{ d.cooperative or "—" }}</td>
+                <td>{{ d.group_name or "—" }}</td>
+                <td>{% if d.membership_status %}<span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(d.membership_status, 'bad') }}">{{ d.membership_status }}</span>{% else %}—{% endif %}</td>
+                <td><a href="{{ url_for('coop.member', user_id=d.id) }}"><span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(d.verification_status, 'bad') }}">{{ d.verification_status }}</span></a></td>
+                <td><span class="badge {{ 'ok' if d.is_active else 'bad' }}">{{ 'Active' if d.is_active else 'Deactivated' }}</span></td>
+                <td>{{ (d.monitoring or "Not monitoring") | replace('_', ' ') }}</td>
+                <td>{% if d.active_assistance %}<span class="badge info">{{ d.active_assistance | replace('_', ' ') }}</span>{% else %}—{% endif %}</td>
+                <td>{{ d.completed }}</td>
+                <td>{{ d.created_at.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin_mgmt.set_active', user_id=d.id) }}"
+                          onsubmit="return confirm('{{ 'Deactivate' if d.is_active else 'Activate' }} {{ d.username }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="active" value="{{ 0 if d.is_active else 1 }}">
+                        <button class="btn btn-light btn-sm" type="submit">{{ 'Deactivate' if d.is_active else 'Activate' }}</button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="15" class="muted">No drivers registered yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endblock %}

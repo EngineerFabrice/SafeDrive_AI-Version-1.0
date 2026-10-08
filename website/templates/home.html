@@ -1,86 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>SafeDrive AI</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <!-- Navbar -->
-  <nav>
-    <div class="logo">SafeDrive AI <span>Beta</span></div>
-    <ul>
-      <li><a href="#features">Features</a></li>
-      <li><a href="#how-it-works">How It Works</a></li>
-      <li><a href="#technology">Technology</a></li>
-      <li><a href="#about">About</a></li>
-    </ul>
-    <div class="auth">
-      <a href="{{ url_for('routes.login') }}" class="signin">Sign In</a>
-      <a href="{{ url_for('routes.register') }}" class="getstarted">Get Started</a>
-    </div>
-  </nav>
-
+{% extends "base.html" %}
+{% block title %}SafeDrive AI{% endblock %}
+{% block content %}
   <!-- Hero Section -->
   <section class="hero">
     <div class="hero-text">
       <h1>SafeDrive <span>AI</span></h1>
-      <p>Revolutionary driver monitoring system that detects drowsiness with <b>97% accuracy</b>, keeping you safe on every journey.</p>
+      <p>An AI-assisted driver sobriety and assistance system. A driver-facing camera and a
+         computer-vision pipeline estimate whether a driver may be affected by alcohol, and help a
+         potentially impaired driver get a verified Umusare (support driver) instead of continuing to drive.</p>
 
       <div class="tags">
-        <span>👁 Real-time Monitoring</span>
-        <span>⚡ Instant Alerts</span>
-        <span>🧠 AI Neural Network</span>
+        <span>📷 Real-time camera monitoring</span>
+        <span>🧠 Transfer-learning classifier (in development)</span>
+        <span>🤝 Cooperative Umusare network</span>
       </div>
 
       <div class="buttons">
-        <button class="demo">Request Demo</button>
-        <button class="learn">Learn More</button>
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('routes.dashboard') }}"><button class="demo" type="button">My dashboard</button></a>
+        {% else %}
+          <a href="{{ url_for('routes.register') }}"><button class="demo" type="button">Get started</button></a>
+        {% endif %}
+        <a href="#how-it-works"><button class="learn" type="button">How it works</button></a>
       </div>
 
       <div class="stats">
-        <div><h2>97%</h2><p>Accuracy Rate</p></div>
-        <div><h2>24/7</h2><p>Monitoring</p></div>
-        <div><h2>100ms</h2><p>Response Time</p></div>
+        <div><h2>3</h2><p>Assessment states: Sober · Uncertain · Potentially not sober</p></div>
+        <div><h2>4</h2><p>Roles: Driver · Umusare · Manager · Admin</p></div>
       </div>
     </div>
 
-    <!-- Right side image -->
-<div class="hero-img">
-  <img src="{{ url_for('static', filename='images/car-dashboard.jpg') }}" alt="Car Dashboard">
-  <div class="driver-alert"><span class="dot"></span> Driver Alert</div>
-  <div class="detection-rate">97% Detection Rate</div>
-</div>
-
-  </section>
-
-  <!-- Features Section -->
-  <section class="info-section" id="features">
-    <div class="section-header">
-      <h2>Features</h2>
-      <p>SafeDrive AI provides intelligent, real-time monitoring and insights designed to improve driver safety and vehicle performance.</p>
-    </div>
-    <div class="feature-grid">
-      <div class="card">
-        <h3>Driver Behavior Monitoring</h3>
-        <p>Detect harsh braking, overspeeding, rapid acceleration, distraction events, and fatigue indicators.</p>
-      </div>
-      <div class="card">
-        <h3>AI-Powered Alerts</h3>
-        <p>Receive instant notifications for dangerous driving patterns or vehicle abnormalities.</p>
-      </div>
-      <div class="card">
-        <h3>Trip Tracking & History</h3>
-        <p>View detailed trip summaries with timestamps, routes, and event logs.</p>
-      </div>
-      <div class="card">
-        <h3>Vehicle Health Monitoring</h3>
-        <p>Track maintenance schedules, engine alerts, and diagnostic indicators to keep vehicles in top condition.</p>
-      </div>
-      <div class="card">
-        <h3>Reports & Analytics Dashboard</h3>
-        <p>Visual insights and performance analytics help drivers and fleet managers make informed decisions.</p>
-      </div>
+    <div class="hero-img">
+      <img src="{{ url_for('static', filename='images/car-dashboard.jpg') }}" alt="Car dashboard">
     </div>
   </section>
 
@@ -88,98 +39,54 @@
   <section class="info-section alt" id="how-it-works">
     <div class="section-header">
       <h2>How It Works</h2>
-      <p>SafeDrive AI combines smart sensors, machine learning, and cloud intelligence to protect drivers on the road.</p>
+      <p>Alcohol-related impairment only. SafeDrive AI does not measure blood alcohol concentration and
+         is not a medical or legal test.</p>
     </div>
     <div class="process-step-grid">
       <div class="card">
-        <h3>Data Collection</h3>
-        <p>The system gathers data from sensors, mobile apps, or onboard vehicle modules.</p>
+        <h3>1. Driver camera</h3>
+        <p>The camera finds the driver, locates the face and checks that the image is good enough to assess.</p>
       </div>
       <div class="card">
-        <h3>AI Analysis</h3>
-        <p>Advanced algorithms analyze driving patterns, identify risks, and detect anomalies in real time.</p>
+        <h3>2. AI assessment</h3>
+        <p>A lightweight image classifier (MobileNetV3, being developed) scores each frame for alcohol-related
+           visual patterns.</p>
       </div>
       <div class="card">
-        <h3>Instant Driver Alerts</h3>
-        <p>The driver or fleet manager receives immediate notifications via SMS, dashboard alerts, or push notifications.</p>
+        <h3>3. Stable decision</h3>
+        <p>A short temporal window combines many frames, so one noisy frame never triggers a warning. The result
+           is Sober, Uncertain or Potentially not sober.</p>
       </div>
       <div class="card">
-        <h3>Secure Cloud Storage</h3>
-        <p>All events, trips, and vehicle records are safely stored and synchronized in the cloud.</p>
-      </div>
-      <div class="card">
-        <h3>Reports & Insight Generation</h3>
-        <p>Dashboards visualize key metrics, providing actionable insights to improve safety and efficiency.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Technology Section -->
-  <section class="info-section" id="technology">
-    <div class="section-header">
-      <h2>Technology</h2>
-      <p>SafeDrive AI is built with a modern, robust technology stack designed for accuracy, speed, and reliability.</p>
-    </div>
-    <div class="feature-grid">
-      <div class="card">
-        <h3>Machine Learning Models</h3>
-        <p>Detect risky behaviors, predict possible accidents, and classify driving events.</p>
-      </div>
-      <div class="card">
-        <h3>Real-Time Data Processing</h3>
-        <p>High-performance APIs ensure instant event detection and alert dispatch.</p>
-      </div>
-      <div class="card">
-        <h3>Cloud Computing Infrastructure</h3>
-        <p>Scalable backend systems process large volumes of trip and driver data.</p>
-      </div>
-      <div class="card">
-        <h3>IoT & Edge Devices Support</h3>
-        <p>Works with sensors, OBD-II devices, dashboards, and smartphone sensors.</p>
-      </div>
-      <div class="card">
-        <h3>Secure Architecture</h3>
-        <p>User authentication, encrypted communication, and role-based access control.</p>
-      </div>
-      <div class="card">
-        <h3>Automatic Updates</h3>
-        <p>Continuous deployment ensures your system always runs with the latest improvements.</p>
+        <h3>4. Warning and assistance</h3>
+        <p>If the assessment is “potentially not sober”, the driver is warned and can request a nearby verified
+           Umusare (planned).</p>
       </div>
     </div>
   </section>
 
   <!-- About Section -->
-  <section class="info-section alt" id="about">
+  <section class="info-section" id="about">
     <div class="section-header">
       <h2>About SafeDrive AI</h2>
-      <p>SafeDrive AI is a smart road-safety and vehicle-monitoring platform designed to reduce accidents and improve transportation efficiency.</p>
+      <p>A final-year Bachelor of Computer Engineering project by Fabrice Ndayisaba and Mugabo Kevia.</p>
     </div>
     <div class="about-copy card">
-      <p>Our mission is to empower drivers, fleet owners, and transport companies with real-time insights, intelligent alerts, and advanced analytics.</p>
-      <p>We believe technology can save lives. By combining artificial intelligence, cloud computing, and modern vehicle telemetry, SafeDrive AI provides a reliable solution that helps create safer roads for everyone.</p>
+      <p>Drivers and Umusare belong to cooperatives, which handle identity, verification and accountability.
+         An Umusare can help only after their cooperative manager has verified them.</p>
+      <p>Current status: camera monitoring, driver and face detection, accounts and cooperatives work. The alcohol
+         classifier has not been trained or validated yet, so no sobriety results are shown and no accuracy is claimed.</p>
     </div>
   </section>
 
   <!-- Footer -->
-<footer class="footer">
-  <div class="footer-content">
-    <p>&copy; 2026 SafeDrive AI. All rights reserved.</p>
-    <ul class="footer-links">
-      <li><a href="#">Features</a></li>
-      <li><a href="#">How It Works</a></li>
-      <li><a href="#">Technology</a></li>
-      <li><a href="#">About</a></li>
-      <li><a href="#">Contact</a></li>
-    </ul>
-  </div>
-</footer>
-
-
-  <!-- Scripts -->
-  <script>
-    document.querySelector(".demo").addEventListener("click", () => {
-      alert("Demo request submitted! 🚗💨");
-    });
-  </script>
-</body>
-</html>
+  <footer class="footer">
+    <div class="footer-content">
+      <p>&copy; 2026 SafeDrive AI.</p>
+      <ul class="footer-links">
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#about">About</a></li>
+      </ul>
+    </div>
+  </footer>
+{% endblock %}

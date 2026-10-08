@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block title %}{{ driver.username }}{% endblock %}
+{% block heading %}{{ driver.username }} <span class="muted" style="font-size:15px;">{{ driver.code }}</span>{% endblock %}
+{% block content %}
+<div class="cards">
+    <div class="card"><h3>Account</h3><div class="value" style="font-size:18px;">{{ 'Active' if driver.is_active else 'Deactivated' }}</div>
+        <span class="muted">Registered {{ driver.created_at.strftime('%Y-%m-%d') }}</span></div>
+    <div class="card"><h3>Cooperative</h3><div class="value" style="font-size:18px;">{{ driver.cooperative or "—" }}</div>
+        {% if driver.membership_status %}<span class="badge {{ {'APPROVED':'ok','PENDING':'warn'}.get(driver.membership_status, 'bad') }}">{{ driver.membership_status }}</span>{% endif %}</div>
+    <div class="card"><h3>AI monitoring (read-only)</h3><div class="value" style="font-size:18px;">{{ (driver.monitoring or "Not monitoring") | replace('_', ' ') }}</div></div>
+</div>
+
+<section class="panel">
+    <h2>Contact</h2>
+    <dl style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px;">
+        <dt class="muted">Email</dt><dd>{{ driver.email }}</dd>
+        <dt class="muted">Phone</dt><dd>{{ driver.phone or "—" }}</dd>
+        <dt class="muted">Last login</dt><dd>{{ driver.last_login_at.strftime('%Y-%m-%d %H:%M') if driver.last_login_at else "—" }}</dd>
+    </dl>
+    <form class="inline" method="POST" action="{{ url_for('admin_mgmt.set_phone', user_id=driver.id) }}" style="margin-top:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_mgmt.driver_detail', user_id=driver.id) }}">
+        <input type="text" name="phone" placeholder="+250 78X XXX XXX" aria-label="Phone" value="{{ driver.phone or '' }}">
+        <button class="btn btn-light btn-sm" type="submit">Save phone</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Assistance history</h2>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>ID</th><th>Requested</th><th>Type</th><th>Status</th><th>Umusare</th><th>Distance</th><th>Fare</th><th>Payment</th></tr></thead>
+        <tbody>
+        {% for h in history %}
+            <tr><td>{{ h.code }}</td><td>{{ h.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ h.type_label }}</td>
+                <td>{{ h.status | replace('_', ' ') }}</td><td>{{ h.umusare or "—" }}</td>
+                <td>{{ '%.2f km' % h.final_distance_km if h.final_distance_km is not none else "—" }}</td>
+                <td>{{ h.fare_label or "—" }}</td><td>{{ h.payment_status | replace('_', ' ') }}</td></tr>
+        {% else %}
+            <tr><td colspan="8" class="muted">No assistance requests.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+<p><a class="btn btn-light btn-sm" href="{{ url_for('admin_mgmt.drivers') }}">← All drivers</a></p>
+{% endblock %}

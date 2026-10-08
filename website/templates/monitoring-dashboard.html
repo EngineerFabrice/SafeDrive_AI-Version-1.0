@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>SafeDrive AI - Live Monitoring</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -28,6 +29,8 @@ body { display:flex; min-height:100vh; background:var(--bg-light); color:var(--t
 .sidebar a { display:flex; align-items:center; padding:12px 15px; margin-bottom:8px; text-decoration:none; color:var(--text-dark); border-radius:8px; transition:background 0.2s; }
 .sidebar a:hover { background:var(--bg-light); }
 .sidebar a.active { background:var(--primary); color:#fff; }
+.sidebar form button { width:100%; text-align:left; padding:12px 15px; border:none; background:none; color:var(--text-dark); font-size:inherit; border-radius:8px; cursor:pointer; }
+.sidebar form button:hover { background:var(--bg-light); }
 
 .main { flex:1; padding:20px 30px; overflow-y:auto; min-width:0; }
 
@@ -133,10 +136,13 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
 <div class="sidebar">
     <h2>SafeDrive AI</h2>
     <a href="{{ url_for('monitoring.dashboard') }}" class="active">Live Monitoring</a>
+    {# Monitoring is limited to drivers and administrators (website/monitoring.py MONITORING_ROLES). #}
     {% if current_user.is_admin() %}<a href="{{ url_for('routes.admin_dashboard') }}">Admin Dashboard</a>
-    {% elif current_user.is_chef() %}<a href="{{ url_for('routes.chef_dashboard') }}">Chef Dashboard</a>
     {% else %}<a href="{{ url_for('routes.driver_dashboard') }}">Driver Dashboard</a>{% endif %}
-    <a href="{{ url_for('routes.logout') }}">Logout</a>
+    <form method="POST" action="{{ url_for('routes.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit">Logout</button>
+    </form>
 </div>
 
 <div class="main">
@@ -154,6 +160,7 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
         </div>
     </div>
 
+    <div class="notice mock" id="control-error" hidden role="alert"><span>⚠</span><span id="control-error-text"></span></div>
     <div class="notice system" role="note"><span>ⓘ</span><span>{{ system_notice }}</span></div>
     <div class="notice mock" id="mock-banner" hidden role="alert">
         <span>⚠</span>
@@ -184,6 +191,8 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
                 <div class="stat" id="st-face"><div class="label">Face</div><div class="value">—</div><div class="detail"></div></div>
                 <div class="stat" id="st-features"><div class="label">Features</div><div class="value">—</div><div class="detail"></div></div>
                 <div class="stat" id="st-model"><div class="label">Impairment model</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-quality"><div class="label">Face quality</div><div class="value">—</div><div class="detail"></div></div>
+                <div class="stat" id="st-assessment"><div class="label">AI assessment (temporal)</div><div class="value">—</div><div class="detail"></div></div>
             </div>
             <div class="message" id="status-message"></div>
         </div>
@@ -406,6 +415,20 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
         }
     }
 
+    // ---------------------------------------------------------------- temporal assessment (research view)
+    const ASSESSMENT_CLASS = { SOBER: "s-ok", UNCERTAIN: "s-warn", POTENTIALLY_NOT_SOBER: "s-bad", ASSESSING: "s-off" };
+    function renderAssessment(s) {
+        const q = s.face_quality;
+        setStat("st-quality", q ? (q.ok ? "OK" : "POOR") : "—", q ? (q.ok ? "s-ok" : "s-warn") : "s-off",
+                q ? "score " + q.score.toFixed(2) + (q.reasons.length ? " · " + q.reasons.join(", ") : "") : "");
+        const a = s.assessment;
+        if (!a) { setStat("st-assessment", s.running ? "NO CLASSIFIER" : "—", "s-off", ""); return; }
+        const score = a.score === null ? "—" : a.score.toFixed(2);
+        setStat("st-assessment", human(a.assessment), ASSESSMENT_CLASS[a.assessment] || "s-off",
+                "score " + score + " · raw " + human(a.raw_assessment) + " · valid " + a.valid_frames + "/" + a.total_frames +
+                (a.reasons.length ? " · " + a.reasons.join(", ") : ""));
+    }
+
     // ---------------------------------------------------------------- status
     function renderStatus(s) {
         const running = s.running;
@@ -492,7 +515,7 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
         statusBusy = true;
         try {
             const s = await getJSON("{{ url_for('monitoring.status') }}");
-            renderStatus(s); renderModel(s.impairment); renderOutput(s);
+            renderStatus(s); renderModel(s.impairment); renderOutput(s); renderAssessment(s);
         } catch (e) {
             setPill("pill-status", "API UNREACHABLE", "s-bad");
             $("status-message").textContent = "Cannot reach /monitoring/status (" + e.message + ").";
@@ -500,7 +523,19 @@ table.hist tbody tr:hover, table.hist tbody tr.selected { background:var(--bg-li
     }
     async function control(action) {
         $("btn-start").disabled = $("btn-stop").disabled = true;
-        try { await fetch("{{ url_for('monitoring.dashboard') }}" + action, { method: "POST" }); } catch (e) {}
+        // State-changing requests carry the CSRF token; ownership errors (403/409) are shown, not hidden.
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        let error = "";
+        try {
+            const res = await fetch("{{ url_for('monitoring.dashboard') }}" + action, {
+                method: "POST", headers: { "X-CSRFToken": token, "Accept": "application/json" } });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                error = data.error || ("Request failed (HTTP " + res.status + ").");
+            }
+        } catch (e) { error = "Cannot reach the monitoring service."; }
+        $("control-error-text").textContent = error;
+        $("control-error").hidden = !error;
         await pollModel(); await pollStatus();
     }
     $("btn-start").addEventListener("click", () => control("start"));

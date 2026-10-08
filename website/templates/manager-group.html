@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}{{ g.name }}{% endblock %}
+{% block heading %}{{ g.name }}{% endblock %}
+{% block content %}
+{% set back = url_for('coop.cooperative', coop_id=g.cooperative_id) if current_user.is_admin() else url_for('routes.manager_dashboard') ~ '#groups' %}
+<p style="margin-bottom:14px;"><a href="{{ back }}" class="muted">← Back</a></p>
+<div class="cards">
+    <div class="card"><h3>Group ID</h3><div class="value" style="font-size:18px;">{{ g.code }}</div></div>
+    <div class="card"><h3>Cooperative</h3><div class="value" style="font-size:18px;">{{ g.cooperative }}</div></div>
+    <div class="card"><h3>Status</h3><div class="value" style="font-size:18px;"><span class="badge {{ 'ok' if g.status == 'ACTIVE' else 'bad' }}">{{ g.status }}</span></div></div>
+    <div class="card"><h3>Members</h3><div class="value">{{ d.members | length }}</div></div>
+    <div class="card"><h3>Created</h3><div class="value" style="font-size:16px;">{{ g.created_at.strftime('%Y-%m-%d') }}</div></div>
+</div>
+
+<section class="panel">
+    <h2>Group settings</h2>
+    <form class="inline" method="POST" action="{{ url_for('coop.group_edit', group_id=g.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" value="{{ g.name }}" required minlength="3" maxlength="80" aria-label="Group name" style="min-width:240px;">
+        <select name="status" aria-label="Group status">
+            <option value="ACTIVE" {{ 'selected' if g.status == 'ACTIVE' }}>Active</option>
+            <option value="INACTIVE" {{ 'selected' if g.status == 'INACTIVE' }}>Inactive</option>
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Save</button>
+    </form>
+    <p class="muted" style="margin-top:8px; font-size:13px;">Groups belong to {{ g.cooperative }} only. Members of other cooperatives can never be added.</p>
+</section>
+
+<section class="panel">
+    <h2>Members</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>ID</th><th>Role</th><th>Verification</th><th>Plate</th><th></th></tr></thead>
+        <tbody>
+        {% for p in d.members %}
+            <tr><td><a href="{{ url_for('coop.member', user_id=p.id) }}"><b>{{ p.username }}</b></a></td><td class="muted">{{ p.code }}</td>
+                <td>{{ "Umusare" if p.role == "umusare" else "Driver" }}</td>
+                <td><span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(p.verification_status, 'bad') }}">{{ p.verification_status }}</span></td>
+                <td>{{ p.vehicle_plate_number or ("—" if p.role == "umusare" else "Missing") }}</td>
+                <td><form method="POST" action="{{ url_for('coop.group_remove', group_id=g.id, user_id=p.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-light btn-sm" type="submit">Remove</button></form></td></tr>
+        {% else %}
+            <tr><td colspan="6" class="muted">No members in this group yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% if g.status == 'ACTIVE' and d.candidates %}
+    <form class="inline" method="POST" action="{{ url_for('coop.group_add', group_id=g.id) }}" style="margin-top:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="user_id" required aria-label="Member to add">
+            <option value="">Add a member of {{ g.cooperative }}…</option>
+            {% for p in d.candidates %}<option value="{{ p.id }}">{{ p.username }} · {{ "Umusare" if p.role == "umusare" else "Driver" }} · {{ p.code }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Add to group</button>
+    </form>
+    <p class="muted" style="font-size:13px; margin-top:6px;">A member belongs to one group at a time; adding moves them from their current group.</p>
+    {% elif g.status != 'ACTIVE' %}<p class="muted" style="margin-top:10px;">Activate the group to add members.</p>{% endif %}
+</section>
+{% endblock %}

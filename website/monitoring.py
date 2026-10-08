@@ -9,7 +9,7 @@ computer vision); frames are never sent *to* the server over HTTP.
 Environment variables:
   SAFEDRIVE_CAMERA_SOURCE   camera index or video path (default 0)
   SAFEDRIVE_YOLO_WEIGHTS    YOLO weights path (default yolov8n.pt)
-  MODEL_PROVIDER            impairment model: none (default) | mock (DEVELOPMENT_ONLY)
+  MODEL_PROVIDER            impairment model: alcohol_mobilenetv3 (default) | none | mock (DEVELOPMENT_ONLY)
 """
 import atexit
 import os
@@ -19,7 +19,7 @@ import time
 
 import cv2
 from flask import Blueprint, Response, jsonify, render_template, request
-from flask_login import current_user, login_required
+from flask_login import current_user
 
 from engine import CameraConfig, MonitoringPipeline, PipelineConfig
 from engine.detectors.person import PersonDetectorConfig
@@ -27,14 +27,21 @@ from engine.features import FEATURE_NAMES, FEATURE_SCHEMA_VERSION
 from engine.impairment import create_impairment_model
 from engine.pipeline import draw_overlay
 
+from . import ROLE_ADMIN, ROLE_DRIVER, audit
+from .auth import roles_required
 from .history import HistoryRecorder, HistoryUnavailable, event_to_dict, session_to_dict
 
 monitoring = Blueprint("monitoring", __name__, url_prefix="/monitoring")
 
+# The engine drives the in-vehicle camera, so only drivers (and administrators, for
+# support and research) may use it. Managers and Umusare never see the driver camera.
+MONITORING_ROLES = (ROLE_DRIVER, ROLE_ADMIN)
+
 # Shown on the dashboard at all times. Update this text (not the dashboard) when a
 # validated model is introduced.
-SYSTEM_NOTICE = ("Development system: model outputs shown here are experimental/mock results "
-                 "and must not be interpreted as a determination of alcohol impairment.")
+SYSTEM_NOTICE = ("Research view of a development system: the AI model is a prototype trained on a limited "
+                 "dataset. Its outputs must not be interpreted as a determination of alcohol impairment "
+                 "or blood alcohol concentration.")
 
 VIDEO_MAX_FPS = 10       # dashboard preview rate; independent of the processing rate
 VIDEO_MAX_WIDTH = 960    # preview is downscaled to keep bandwidth low
@@ -42,6 +49,7 @@ VIDEO_MAX_WIDTH = 960    # preview is downscaled to keep bandwidth low
 _engine = None
 _recorder = None
 _engine_lock = threading.Lock()
+_control_lock = threading.Lock()   # serialises start/stop requests
 _SESSION_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -68,7 +76,7 @@ def get_recorder():
 
 
 @monitoring.route("/")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def dashboard():
     return render_template("monitoring-dashboard.html", username=current_user.username,
                            feature_schema_version=FEATURE_SCHEMA_VERSION,
@@ -76,7 +84,7 @@ def dashboard():
 
 
 @monitoring.route("/status")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def status():
     snapshot = get_engine().snapshot().to_dict()
     snapshot["running"] = get_engine().is_running
@@ -84,7 +92,7 @@ def status():
 
 
 @monitoring.route("/model")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def model():
     """Which impairment model is configured, and whether it is development-only."""
     engine = get_engine()
@@ -100,7 +108,7 @@ def model():
 
 
 @monitoring.route("/video")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def video():
     """MJPEG preview of the frames the pipeline has already processed, with its existing overlay."""
     engine = get_engine()
@@ -128,22 +136,37 @@ def video():
 
 
 @monitoring.route("/start", methods=["POST"])
-@login_required
+@roles_required(*MONITORING_ROLES)
 def start():
     engine = get_engine()
-    if not engine.is_running:
+    with _control_lock:
+        if engine.is_running:
+            owner = get_recorder().active_owner()
+            if owner is not None and owner != _user_id():
+                return jsonify({"running": True,
+                                "error": "Monitoring is already running for another user."}), 409
+            return jsonify({"running": True})
         engine.start()
         get_recorder().start_session(started_by=_user_id())   # in-memory; written by its own thread
+    audit.record(audit.MONITORING_STARTED, actor_id=_user_id(), target_type="monitoring_session")
     return jsonify({"running": True})
 
 
 @monitoring.route("/stop", methods=["POST"])
-@login_required
+@roles_required(*MONITORING_ROLES)
 def stop():
+    """Only the user who started the session (or an administrator) may stop it."""
     engine = get_engine()
-    if engine.is_running:
-        get_recorder().end_session("COMPLETED")   # before stop(), so the session is not seen as interrupted
-    engine.stop()
+    with _control_lock:
+        owner = get_recorder().active_owner()
+        if engine.is_running and owner is not None and owner != _user_id()                 and current_user.role != ROLE_ADMIN:
+            return jsonify({"running": True, "error": "Only the driver who started monitoring can stop it."}), 403
+        was_running = engine.is_running
+        if was_running:
+            get_recorder().end_session("COMPLETED")   # before stop(), so the session is not seen as interrupted
+        engine.stop()
+    if was_running:
+        audit.record(audit.MONITORING_STOPPED, actor_id=_user_id(), target_type="monitoring_session")
     return jsonify({"running": False})
 
 
@@ -156,13 +179,14 @@ def _user_id():
 
 # ---------------------------------------------------------------- history (read-only)
 @monitoring.route("/history")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def history():
-    """Recent monitoring sessions (technical statistics only)."""
+    """Recent monitoring sessions (technical statistics only). Drivers see only their own."""
     limit = max(1, min(request.args.get("limit", 20, type=int), 100))
     recorder = get_recorder()
+    owner = None if current_user.role == ROLE_ADMIN else _user_id()
     try:
-        sessions = [session_to_dict(r) for r in recorder.store.list_sessions(limit)]
+        sessions = [session_to_dict(r) for r in recorder.store.list_sessions(limit, started_by=owner)]
     except HistoryUnavailable:
         return jsonify({"sessions": [], "persistence": recorder.status(),
                         "error": "Monitoring history is temporarily unavailable."}), 503
@@ -170,7 +194,7 @@ def history():
 
 
 @monitoring.route("/history/<session_id>")
-@login_required
+@roles_required(*MONITORING_ROLES)
 def history_session(session_id):
     """One session and its technical events. No feature vectors or model outputs are stored."""
     if not _SESSION_ID.match(session_id):
@@ -179,6 +203,7 @@ def history_session(session_id):
         session, events = get_recorder().store.get_session(session_id)
     except HistoryUnavailable:
         return jsonify({"error": "Monitoring history is temporarily unavailable."}), 503
-    if session is None:
+    # Another driver's session is reported as not found, so ids cannot be probed.
+    if session is None or (current_user.role != ROLE_ADMIN and session.get("started_by") != _user_id()):
         return jsonify({"error": "Session not found."}), 404
     return jsonify({"session": session_to_dict(session), "events": [event_to_dict(e) for e in events]})

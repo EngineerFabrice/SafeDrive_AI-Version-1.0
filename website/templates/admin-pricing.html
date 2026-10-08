@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block title %}Pricing{% endblock %}
+{% block heading %}Fare pricing{% endblock %}
+{% block styles %}
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; }
+.grid2 label { display:block; font-size:13px; font-weight:600; margin-bottom:4px; }
+.grid2 input { width:100%; }
+.formula { background:var(--bg-light); border-radius:10px; padding:12px 14px; font-family:ui-monospace, monospace; font-size:14px; }
+{% endblock %}
+{% block content %}
+<section class="panel">
+    <h2>Formula</h2>
+    <p class="formula">fare = base fee + actual journey km × price per km, limited to [minimum, maximum], rounded to a whole {{ pricing.currency }}</p>
+    <p class="muted" style="margin-top:8px;">Example with the current settings: 4.6 km → <b>{{ example }}</b>
+        (before minimum/maximum). The final fare is calculated by the server when the Umusare completes the journey,
+        and each completed journey keeps the prices it was charged even if you change them later.</p>
+</section>
+
+<section class="panel">
+    <h2>Settings</h2>
+    <form method="POST" action="{{ url_for('admin_mgmt.pricing') }}"
+          onsubmit="return confirm('Update fare pricing? New journeys will use these values.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="grid2">
+            <div><label for="currency">Currency</label>
+                <input type="text" id="currency" name="currency" value="{{ pricing.currency }}" maxlength="3" required></div>
+            <div><label for="price_per_km">Price per kilometre</label>
+                <input type="text" id="price_per_km" name="price_per_km" value="{{ '%g' % pricing.price_per_km }}" inputmode="decimal" required></div>
+            <div><label for="base_fee">Base assistance fee</label>
+                <input type="text" id="base_fee" name="base_fee" value="{{ '%g' % pricing.base_fee }}" inputmode="decimal" required></div>
+            <div><label for="minimum_fare">Minimum fare</label>
+                <input type="text" id="minimum_fare" name="minimum_fare" value="{{ '%g' % pricing.minimum_fare }}" inputmode="decimal" required></div>
+            <div><label for="maximum_fare">Maximum fare (empty = none)</label>
+                <input type="text" id="maximum_fare" name="maximum_fare" value="{{ '%g' % pricing.maximum_fare if pricing.maximum_fare is not none else '' }}" inputmode="decimal"></div>
+        </div>
+        <p style="margin-top:14px;"><button class="btn btn-primary" type="submit">Save pricing</button></p>
+    </form>
+    <p class="muted">Last updated: {{ pricing.updated_at.strftime('%Y-%m-%d %H:%M') if pricing.updated_at else "—" }} UTC. Every change is recorded in the audit log.</p>
+</section>
+{% endblock %}

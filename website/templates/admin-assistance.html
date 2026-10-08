@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block title %}Assistance{% endblock %}
+{% block heading %}Assistance monitoring{% endblock %}
+{% block content %}
+<section class="panel">
+    <form class="inline" method="GET" action="{{ url_for('admin_mgmt.assistance') }}" aria-label="Filters">
+        <select name="status" aria-label="Status">
+            <option value="">All statuses</option>
+            {% for v, label in [('active','Active'),('completed','Completed'),('cancelled','Cancelled'),('no_umusare','No Umusare')] %}
+            <option value="{{ v }}" {{ 'selected' if filters.status == v }}>{{ label }}</option>{% endfor %}
+        </select>
+        <select name="type" aria-label="Type">
+            <option value="">All types</option>
+            <option value="ai" {{ 'selected' if filters.type == 'ai' }}>AI-triggered</option>
+            <option value="driver" {{ 'selected' if filters.type == 'driver' }}>Driver-initiated</option>
+        </select>
+        <select name="payment" aria-label="Payment">
+            <option value="">All payments</option>
+            <option value="pending" {{ 'selected' if filters.payment == 'pending' }}>Payment pending</option>
+            <option value="completed" {{ 'selected' if filters.payment == 'completed' }}>Payment completed</option>
+        </select>
+        <select name="cooperative" aria-label="Cooperative">
+            <option value="">All cooperatives</option>
+            {% for c in cooperatives %}<option value="{{ c.id }}" {{ 'selected' if filters.cooperative == c.id|string }}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+        <a class="btn btn-light btn-sm" href="{{ url_for('admin_mgmt.assistance') }}">Reset</a>
+    </form>
+    <p class="muted" style="margin-top:10px;">Areas are approximate (±1 km); exact or live locations are not shown to administrators.</p>
+</section>
+
+<section class="panel">
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>ID</th><th>Status</th><th>Type</th><th>Driver</th><th>Umusare</th><th>Distance</th>
+            <th>Estimated fare</th><th>Final fare</th><th>Payment</th><th>Requested</th><th>Accepted</th>
+            <th>Journey completed</th><th>Paid</th><th>Area</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+            <tr>
+                <td><b>{{ r.code }}</b></td>
+                <td><span class="badge {{ 'info' if r.active else ('ok' if r.status == 'COMPLETED' else ('bad' if r.status == 'NO_UMUSARE_AVAILABLE' else '')) }}">{{ r.status | replace('_', ' ') }}</span></td>
+                <td>{{ r.type_label }}</td>
+                <td>{{ r.driver }}<br><span class="muted">{{ r.driver_cooperative or "—" }}</span></td>
+                <td>{{ r.umusare or "—" }}<br><span class="muted">{{ r.umusare_cooperative or "" }}</span></td>
+                <td>{{ r.distance_label or "—" }}</td>
+                <td>{{ r.estimated_fare_label or "—" }}</td>
+                <td><b>{{ r.final_fare_label or "—" }}</b></td>
+                <td><span class="badge {{ 'ok' if r.payment_status == 'PAYMENT_COMPLETED' else ('warn' if r.payment_status in ('PAYMENT_PENDING','PAYMENT_SENT') else ('bad' if r.payment_status == 'PAYMENT_DISPUTED' else '')) }}">{{ r.payment_status | replace('_', ' ') }}</span></td>
+                <td>{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
+                <td>{{ r.accepted_at.strftime('%H:%M') if r.accepted_at else "—" }}</td>
+                <td>{{ r.journey_ended_at.strftime('%H:%M') if r.journey_ended_at else "—" }}</td>
+                <td>{{ r.payment_completed_at.strftime('%H:%M') if r.payment_completed_at else "—" }}</td>
+                <td class="muted">{{ r.approx_area }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="14" class="muted">No assistance requests match these filters.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="muted" style="margin-top:8px;">Times in UTC.</p>
+</section>
+{% endblock %}

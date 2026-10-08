@@ -1,0 +1,128 @@
+{% extends "layout.html" %}
+{% block title %}{{ d.cooperative.name }}{% endblock %}
+{% block heading %}{{ d.cooperative.name }}{% endblock %}
+{% block styles %}
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns:1fr; } }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; font-size:14px; }
+.kv dt { color:var(--text-light); } .kv dd { font-weight:600; word-break:break-word; }
+.stack { display:flex; flex-direction:column; gap:8px; max-width:420px; }
+.stack input, .stack select { width:100%; }
+{% endblock %}
+{% block content %}
+{% set c = d.cooperative %}{% set s = d.stats %}
+<p style="margin-bottom:14px;"><a href="{{ url_for('coop.cooperatives') }}" class="muted">← All cooperatives</a></p>
+<div class="cards">
+    <div class="card"><h3>Drivers</h3><div class="value">{{ s.drivers }}</div><span class="muted">{{ s.drivers_verified }} verified · {{ s.drivers_pending }} pending</span></div>
+    <div class="card"><h3>Umusare</h3><div class="value">{{ s.umusare }}</div><span class="muted">{{ s.umusare_verified }} verified · {{ s.umusare_pending }} pending</span></div>
+    <div class="card"><h3>Umusare on duty</h3><div class="value">{{ s.umusare_available }}</div></div>
+    <div class="card"><h3>Active assistance</h3><div class="value">{{ s.active_assistance }}</div></div>
+</div>
+
+<div class="grid2">
+    <section class="panel">
+        <h2>Cooperative details</h2>
+        <form method="POST" action="{{ url_for('coop.cooperative_edit', coop_id=c.id) }}" class="stack">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="muted">Name <input type="text" name="name" value="{{ c.name }}" required minlength="3" maxlength="120"></label>
+            <label class="muted">District <input type="text" name="district" value="{{ c.district or '' }}" maxlength="80"></label>
+            <label class="muted">Status
+                <select name="status">
+                    <option value="APPROVED" {{ 'selected' if c.status == 'APPROVED' }}>Active</option>
+                    <option value="SUSPENDED" {{ 'selected' if c.status == 'SUSPENDED' }}>Inactive (suspended)</option>
+                </select></label>
+            <p class="muted" style="font-size:13px;">Cooperative ID (code): <b>{{ c.code }}</b>. Umusare of an inactive cooperative are not matched.</p>
+            <div><button class="btn btn-primary btn-sm" type="submit">Save changes</button></div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Manager</h2>
+        {% if d.manager %}
+        <dl class="kv">
+            <dt>Name</dt><dd>{{ d.manager.name }} <span class="muted">{{ d.manager.code }}</span></dd>
+            <dt>Phone</dt><dd>{{ d.manager.phone or "Not set" }}</dd>
+            <dt>Email</dt><dd>{{ d.manager.email }}</dd>
+            <dt>Status</dt><dd><span class="badge ok">Active</span></dd>
+        </dl>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            {% if manager_token %}<a class="btn btn-light btn-sm" href="{{ url_for('chat.page', to=manager_token) }}">Message manager</a>{% endif %}
+            {% if d.manager.phone %}<a class="btn btn-light btn-sm" href="tel:{{ d.manager.phone }}">Call</a>{% endif %}
+            <a class="btn btn-light btn-sm" href="mailto:{{ d.manager.email }}">Email</a>
+        </div>
+        {% else %}
+        <p><span class="badge warn">No manager assigned</span></p>
+        <p class="muted" style="margin-top:6px;">Members of this cooperative cannot reach a manager until one is assigned.</p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('coop.cooperative_manager', coop_id=c.id) }}" class="inline" style="margin-top:14px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="manager_id" aria-label="Manager to assign" required>
+                <option value="">— choose a manager account —</option>
+                {% for u in d.candidates %}<option value="{{ u.id }}">{{ u.username }} ({{ u.email }})</option>{% endfor %}
+            </select>
+            <button class="btn btn-primary btn-sm" type="submit">{{ "Change manager" if d.manager else "Assign manager" }}</button>
+        </form>
+        <p class="muted" style="font-size:13px; margin-top:6px;">The chosen manager moves to this cooperative; a replaced manager loses access to it.</p>
+    </section>
+</div>
+
+{% if d.managers %}
+<section class="panel">
+    <h2>Manager accounts linked to this cooperative</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>ID</th><th>Email</th><th>Phone</th><th>Membership</th><th>Account</th><th>Last sign-in</th></tr></thead>
+        <tbody>{% for m in d.managers %}
+        <tr><td>{{ m.username }}</td><td class="muted">{{ m.code }}</td><td>{{ m.email }}</td><td>{{ m.phone or "—" }}</td>
+            <td><span class="badge {{ 'ok' if m.status == 'APPROVED' else 'bad' }}">{{ m.status }}</span></td>
+            <td><span class="badge {{ 'ok' if m.is_active else 'bad' }}">{{ 'Active' if m.is_active else 'Deactivated' }}</span></td>
+            <td>{{ m.last_login_at.strftime('%Y-%m-%d %H:%M') if m.last_login_at else "Never" }}</td></tr>
+        {% endfor %}</tbody>
+    </table></div>
+</section>
+{% endif %}
+
+<section class="panel" id="groups">
+    <h2>Groups</h2>
+    <form class="inline" method="POST" action="{{ url_for('coop.group_create') }}" style="margin-bottom:12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="cooperative_id" value="{{ c.id }}">
+        <input type="text" name="name" placeholder="New group name" required minlength="3" maxlength="80" aria-label="New group name">
+        <button class="btn btn-primary btn-sm" type="submit">Create group</button>
+    </form>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Group</th><th>ID</th><th>Status</th><th>Drivers</th><th>Umusare</th><th>Created by</th><th></th></tr></thead>
+        <tbody>{% for g in d.groups %}
+        <tr><td><b>{{ g.name }}</b></td><td class="muted">{{ g.code }}</td>
+            <td><span class="badge {{ 'ok' if g.status == 'ACTIVE' else 'bad' }}">{{ g.status }}</span></td>
+            <td>{{ g.drivers }}</td><td>{{ g.umusare }}</td><td>{{ g.created_by_name or "—" }}</td>
+            <td><a class="btn btn-light btn-sm" href="{{ url_for('coop.group', group_id=g.id) }}">Manage</a></td></tr>
+        {% else %}<tr><td colspan="7" class="muted">No groups yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+
+<section class="panel">
+    <h2>Members</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>ID</th><th>Role</th><th>Group</th><th>Plate</th><th>Email</th><th>Verification</th><th>Account</th><th>Status</th><th></th></tr></thead>
+        <tbody>{% for m in d.members %}
+        <tr><td><b>{{ m.username }}</b></td><td class="muted">{{ m.code }}</td><td>{{ "Umusare" if m.role == "umusare" else "Driver" }}</td>
+            <td>{{ m.group_name or "—" }}</td><td>{{ m.vehicle_plate_number or ("—" if m.role == "umusare" else "Missing") }}</td>
+            <td>{{ m.email }}</td>
+            <td><span class="badge {{ {'VERIFIED':'ok','PENDING':'warn'}.get(m.verification_status, 'bad') }}">{{ m.verification_status }}</span></td>
+            <td><span class="badge {{ 'ok' if m.is_active else 'bad' }}">{{ 'Active' if m.is_active else 'Deactivated' }}</span></td>
+            <td>{{ m.operational }}</td>
+            <td><a class="btn btn-light btn-sm" href="{{ url_for('coop.member', user_id=m.id) }}">Open</a></td></tr>
+        {% else %}<tr><td colspan="10" class="muted">No members yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+
+<section class="panel">
+    <h2>Manager activity</h2>
+    {% if d.manager_activity %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>Action</th><th>When</th></tr></thead>
+        <tbody>{% for a in d.manager_activity %}<tr><td>{{ a.label }}</td><td>{{ a.occurred_at.strftime('%Y-%m-%d %H:%M') }} UTC</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="muted">No recorded activity for the current manager.</p>{% endif %}
+</section>
+{% endblock %}
