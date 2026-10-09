@@ -155,6 +155,11 @@ def create_app(overrides=None):
     from .driver_views import driver
     app.register_blueprint(driver)
 
+    # JSON API for the Flutter mobile app. Bearer-token only (never the session cookie), hence no CSRF.
+    from .mobile_api import mobile_api
+    csrf.exempt(mobile_api)
+    app.register_blueprint(mobile_api)
+
     @app.after_request
     def security_headers(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -164,7 +169,8 @@ def create_app(overrides=None):
 
     def _wants_json():
         monitoring_api = request.path.startswith("/monitoring/") and request.path != "/monitoring/"
-        return monitoring_api or request.path.startswith(("/assistance/", "/chat/api/", "/driver/nearby", "/driver/presence"))             or request.accept_mimetypes.best == "application/json"
+        return monitoring_api or request.path.startswith(("/assistance/", "/chat/api/", "/driver/nearby", "/driver/presence",
+                                                           "/api/"))             or request.accept_mimetypes.best == "application/json"
 
     @app.errorhandler(CSRFError)
     def csrf_error(err):

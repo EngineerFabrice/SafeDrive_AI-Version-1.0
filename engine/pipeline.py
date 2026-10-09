@@ -170,6 +170,16 @@ class MonitoringPipeline:
                              processing_time=(time.perf_counter() - t0) * 1000,
                              impairment=impairment, face_crop=crop, face_quality=quality)
 
+    def analyze_frame(self, image: np.ndarray, captured_at: Optional[float] = None,
+                      frame_id: int = 0) -> Tuple[FrameAnalysis, Optional[TemporalDecision]]:
+        """Process one externally supplied frame (e.g. uploaded by the mobile app) and update the
+        temporal assessment exactly as the camera thread does. Requires loaded detection models;
+        not to be used while this pipeline's own camera thread is running."""
+        captured_at = time.perf_counter() if captured_at is None else captured_at
+        analysis = self.process_frame(image, captured_at, frame_id)
+        self._frames_processed += 1
+        return analysis, self._assess(analysis, Frame(image, frame_id, captured_at))
+
     def _face_crop(self, image: np.ndarray, face: FaceDetection):
         """Aligned crop (same function as training) and its quality; (None, None) on failure."""
         try:

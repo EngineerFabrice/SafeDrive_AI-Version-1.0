@@ -80,110 +80,131 @@ def register():
     The response never reveals whether an email is already registered: a duplicate gets the same
     "we sent you a code" screen (and the existing owner gets a notice email instead of a code).
     """
-    from . import vehicle as vehicle_mod
     from . import email_otp
-    from .email_otp import mask_email
-    from .group_service import active_groups_for_registration
-    from .legal import record_acceptance
     if current_user.is_authenticated:
         return redirect(dashboard_url(current_user))
-    with db_cursor() as cursor:
-        cooperatives = _approved_cooperatives(cursor)
-        groups = active_groups_for_registration(cursor)
+    cooperatives, groups = registration_options()
 
     form = {}
     if request.method == 'POST':
-        keys = ("username", "email", "phone", "role", "cooperative_id", "group_id", "vehicle_plate_number",
-                "vehicle_make", "vehicle_model", "vehicle_type")
-        form = {k: (request.form.get(k) or "").strip() for k in keys}
-        form["email"] = form["email"].lower()
-        password = request.form.get("password") or ""
-        errors = validate_registration(form["username"], form["email"], password,
-                                       request.form.get("confirm_password") or "")
-        if form["role"] not in SELF_REGISTER_ROLES:
-            errors.append("Choose whether you register as a driver or as an Umusare.")
-        coop_ids = {str(c["id"]): c for c in cooperatives}
-        if form["cooperative_id"] not in coop_ids:
-            errors.append("Choose your cooperative.")
-        phone = None
-        if form["phone"]:
-            try:
-                phone = normalize_phone(form["phone"])
-            except ValueError as exc:
-                errors.append(str(exc))
-        group_id = None
-        if form["group_id"]:
-            match = [g for g in groups if str(g["id"]) == form["group_id"]
-                     and str(g["cooperative_id"]) == form["cooperative_id"]]
-            if match:
-                group_id = match[0]["id"]
-            else:
-                errors.append("Choose a group of your own cooperative, or leave the group empty.")
-        vehicle = None
-        if form["role"] == ROLE_DRIVER:
-            try:
-                vehicle = vehicle_mod.validate(form, require_plate=False)
-            except ValueError as exc:
-                errors.append(str(exc))
-        if request.form.get("accept_terms") != "1":
-            errors.append("Please read and accept the Terms & Conditions and Privacy Policy to create an account.")
-        if not errors and _registrations_from_this_network() >= _registration_limit():
-            errors.append("Too many accounts were created from this network recently. Please try again later.")
-
+        form = {k: (request.form.get(k) or "").strip() for k in REGISTRATION_KEYS}
+        errors, result = register_account(form, request.form.get("password") or "",
+                                          request.form.get("confirm_password") or "",
+                                          request.form.get("accept_terms") == "1", cooperatives, groups)
         if not errors:
-            hashed = bcrypt.generate_password_hash(password).decode('utf-8')
-            masked = mask_email(form["email"])
-            message = (f"We sent a 6-digit verification code to {masked}. "
-                       "Enter it below to verify your email address.")
-            try:
-                with db_cursor() as cursor:
-                    cursor.execute(
-                        "INSERT INTO users (username, email, password_hash, role, phone) VALUES (%s, %s, %s, %s, %s)",
-                        (form["username"], form["email"], hashed, form["role"], phone))
-                    user_id = cursor.lastrowid
-                    coop_id = int(form["cooperative_id"])
-                    now = _utcnow()
-                    cursor.execute(
-                        "INSERT INTO cooperative_memberships (user_id, cooperative_id, member_role, group_id, "
-                        "group_assigned_at) VALUES (%s, %s, %s, %s, %s)",
-                        (user_id, coop_id, form["role"], group_id, now if group_id else None))
-                    if form["role"] == ROLE_DRIVER:
-                        v = vehicle or {}
-                        cursor.execute(
-                            "INSERT INTO driver_profiles (user_id, vehicle_plate_number, vehicle_make, vehicle_model, "
-                            "vehicle_type, vehicle_updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
-                            (user_id, v.get("vehicle_plate_number"), v.get("vehicle_make"), v.get("vehicle_model"),
-                             v.get("vehicle_type"), now if v.get("vehicle_plate_number") else None))
-                    else:
-                        cursor.execute("INSERT INTO umusare_profiles (user_id) VALUES (%s)", (user_id,))
-                    audit.record(audit.USER_REGISTERED, actor_id=user_id, target_type="user",
-                                 target_id=user_id, cooperative_id=coop_id,
-                                 details={"role": form["role"]}, cursor=cursor)
-                    record_acceptance(cursor, user_id, now)
-            except pymysql.err.IntegrityError:
-                # Duplicate email: the response must be indistinguishable from a new account (same redirect,
-                # message, cookie shape and countdown); the real owner gets a notice email, never a code.
-                audit.record(audit.REGISTRATION_DUPLICATE, target_type="user")
-                user_id = None
-            state = email_otp.flow_new(user_id, form["email"])
-            delivered = True
-            try:
-                if user_id:
-                    email_otp.issue(user_id)
-                else:
-                    email_otp.decoy_send(form["email"])
-            except AssistanceError as exc:
-                delivered = False
-                flash(exc.message, "warning")
+            if result["warning"]:
+                flash(result["warning"], "warning")
             else:
-                flash(message, "success")
-            email_otp.flow_record_send(state, time.time(), delivered)   # counts even when delivery failed
-            session["verify"] = {"t": email_otp.flow_dump(state), "masked": masked}
+                flash(result["message"], "success")
+            session["verify"] = {"t": email_otp.flow_dump(result["state"]), "masked": result["masked"]}
             return redirect(url_for('account.verify_email'))
         for e in errors:
             flash(e, "danger")
     return render_template('register.html', cooperatives=cooperatives, groups=groups, form=form,
                            vehicle_types=_vehicle_types())
+
+
+REGISTRATION_KEYS = ("username", "email", "phone", "role", "cooperative_id", "group_id", "vehicle_plate_number",
+                     "vehicle_make", "vehicle_model", "vehicle_type")
+
+
+def registration_options():
+    """(approved cooperatives, active groups) that may be chosen at registration."""
+    from .group_service import active_groups_for_registration
+    with db_cursor() as cursor:
+        return _approved_cooperatives(cursor), active_groups_for_registration(cursor)
+
+
+def register_account(form, password, confirm, accepted_terms, cooperatives, groups):
+    """Validate and create a driver / Umusare account; shared by the web form and the mobile API.
+
+    ``form`` holds the stripped REGISTRATION_KEYS values. Returns (errors, result); on success ``result`` is
+    {"state", "masked", "message", "warning"} with the pending email-verification state. A duplicate email
+    returns exactly the same shape as a new account (decoy state, the owner gets a notice email, never a code).
+    """
+    from . import vehicle as vehicle_mod
+    from . import email_otp
+    from .email_otp import mask_email
+    from .legal import record_acceptance
+    form["email"] = form["email"].lower()
+    errors = validate_registration(form["username"], form["email"], password, confirm)
+    if form["role"] not in SELF_REGISTER_ROLES:
+        errors.append("Choose whether you register as a driver or as an Umusare.")
+    coop_ids = {str(c["id"]): c for c in cooperatives}
+    if form["cooperative_id"] not in coop_ids:
+        errors.append("Choose your cooperative.")
+    phone = None
+    if form["phone"]:
+        try:
+            phone = normalize_phone(form["phone"])
+        except ValueError as exc:
+            errors.append(str(exc))
+    group_id = None
+    if form["group_id"]:
+        match = [g for g in groups if str(g["id"]) == form["group_id"]
+                 and str(g["cooperative_id"]) == form["cooperative_id"]]
+        if match:
+            group_id = match[0]["id"]
+        else:
+            errors.append("Choose a group of your own cooperative, or leave the group empty.")
+    vehicle = None
+    if form["role"] == ROLE_DRIVER:
+        try:
+            vehicle = vehicle_mod.validate(form, require_plate=False)
+        except ValueError as exc:
+            errors.append(str(exc))
+    if not accepted_terms:
+        errors.append("Please read and accept the Terms & Conditions and Privacy Policy to create an account.")
+    if not errors and _registrations_from_this_network() >= _registration_limit():
+        errors.append("Too many accounts were created from this network recently. Please try again later.")
+    if errors:
+        return errors, None
+
+    hashed = bcrypt.generate_password_hash(password).decode('utf-8')
+    masked = mask_email(form["email"])
+    message = (f"We sent a 6-digit verification code to {masked}. "
+               "Enter it below to verify your email address.")
+    try:
+        with db_cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO users (username, email, password_hash, role, phone) VALUES (%s, %s, %s, %s, %s)",
+                (form["username"], form["email"], hashed, form["role"], phone))
+            user_id = cursor.lastrowid
+            coop_id = int(form["cooperative_id"])
+            now = _utcnow()
+            cursor.execute(
+                "INSERT INTO cooperative_memberships (user_id, cooperative_id, member_role, group_id, "
+                "group_assigned_at) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, coop_id, form["role"], group_id, now if group_id else None))
+            if form["role"] == ROLE_DRIVER:
+                v = vehicle or {}
+                cursor.execute(
+                    "INSERT INTO driver_profiles (user_id, vehicle_plate_number, vehicle_make, vehicle_model, "
+                    "vehicle_type, vehicle_updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (user_id, v.get("vehicle_plate_number"), v.get("vehicle_make"), v.get("vehicle_model"),
+                     v.get("vehicle_type"), now if v.get("vehicle_plate_number") else None))
+            else:
+                cursor.execute("INSERT INTO umusare_profiles (user_id) VALUES (%s)", (user_id,))
+            audit.record(audit.USER_REGISTERED, actor_id=user_id, target_type="user",
+                         target_id=user_id, cooperative_id=coop_id,
+                         details={"role": form["role"]}, cursor=cursor)
+            record_acceptance(cursor, user_id, now)
+    except pymysql.err.IntegrityError:
+        # Duplicate email: the response must be indistinguishable from a new account (same redirect,
+        # message, cookie shape and countdown); the real owner gets a notice email, never a code.
+        audit.record(audit.REGISTRATION_DUPLICATE, target_type="user")
+        user_id = None
+    state = email_otp.flow_new(user_id, form["email"])
+    delivered, warning = True, None
+    try:
+        if user_id:
+            email_otp.issue(user_id)
+        else:
+            email_otp.decoy_send(form["email"])
+    except AssistanceError as exc:
+        delivered, warning = False, exc.message
+    email_otp.flow_record_send(state, time.time(), delivered)   # counts even when delivery failed
+    return [], {"state": state, "masked": masked, "message": message, "warning": warning}
 
 
 def _vehicle_types():
@@ -210,32 +231,40 @@ def _registrations_from_this_network():
 # ========================= LOGIN =========================
 @routes.route('/login', methods=['GET', 'POST'])
 def login():
-    global _dummy_hash
     if current_user.is_authenticated:
         return redirect(dashboard_url(current_user))
     if request.method == 'POST':
-        email = (request.form.get('email') or "").strip().lower()
-        password = request.form.get('password') or ""
-        user = get_user_by_email(email) if email else None
-
-        if user is None:
-            if _dummy_hash is None:
-                _dummy_hash = bcrypt.generate_password_hash("timing-equaliser").decode()
-            bcrypt.check_password_hash(_dummy_hash, password)
-            ok = False
-        else:
-            ok = user.is_active and bcrypt.check_password_hash(user.password_hash, password)
-
-        if ok:
+        user = check_credentials(request.form.get('email'), request.form.get('password'))
+        if user is not None:
             login_user(user)
-            with db_cursor() as cursor:
-                cursor.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (_utcnow(), user.id))
-            audit.record(audit.LOGIN_SUCCEEDED, actor_id=user.id, target_type="user", target_id=user.id)
             return redirect(_safe_next(request.args.get("next")) or dashboard_url(user))
-
-        audit.record(audit.LOGIN_FAILED, target_type="user", target_id=user.id if user else None)
         flash('Incorrect email or password.', 'danger')
     return render_template('login.html')
+
+
+def check_credentials(email, password):
+    """The active user for this email/password, or None; audited. Shared by the web form and the mobile API.
+
+    An unknown email still costs one bcrypt comparison, so timing does not reveal which accounts exist.
+    """
+    global _dummy_hash
+    email = (email or "").strip().lower() if isinstance(email, str) else ""
+    password = password if isinstance(password, str) else ""
+    user = get_user_by_email(email) if email else None
+    if user is None:
+        if _dummy_hash is None:
+            _dummy_hash = bcrypt.generate_password_hash("timing-equaliser").decode()
+        bcrypt.check_password_hash(_dummy_hash, password)
+        ok = False
+    else:
+        ok = user.is_active and bcrypt.check_password_hash(user.password_hash, password)
+    if not ok:
+        audit.record(audit.LOGIN_FAILED, target_type="user", target_id=user.id if user else None)
+        return None
+    with db_cursor() as cursor:
+        cursor.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (_utcnow(), user.id))
+    audit.record(audit.LOGIN_SUCCEEDED, actor_id=user.id, target_type="user", target_id=user.id)
+    return user
 
 
 # ========================= LOGOUT =========================

@@ -35,6 +35,8 @@ models/*/runs/
 instance/backups/
 # Development email outbox (contains one-time codes)
 instance/dev_outbox/
+# Independent model-evaluation reports (pseudonymous subject ids; scripts/evaluate_independent_faces.py)
+instance/evaluations/
 # Development-only Flask secret (generated locally; production must set SAFEDRIVE_SECRET_KEY)
 instance/.dev_secret_key
 

@@ -42,22 +42,34 @@ def _body():
 
 
 def _verified_trigger(claimed):
-    """AI_TRIGGERED only if this driver's live monitoring session really is POTENTIALLY_NOT_SOBER.
+    return verified_trigger(_uid(), claimed)
 
-    The browser's claim is never trusted on its own; anything else is a manual (DRIVER_INITIATED) request.
-    "SAFETY_ALERT" is accepted as an older name for the same claim.
+
+def verified_trigger(user_id, claimed):
+    """AI_TRIGGERED only if this driver's own monitoring really is POTENTIALLY_NOT_SOBER right now.
+
+    Checked against the driver's live (server camera) session, or their phone-camera session from the
+    mobile app when its latest assessment is recent. The client's claim is never trusted on its own;
+    anything else is a manual (DRIVER_INITIATED) request. "SAFETY_ALERT" is an older name for the claim.
     """
     if claimed not in (svc.AI_TRIGGERED, "SAFETY_ALERT"):
         return svc.DRIVER_INITIATED
     try:
         from . import monitoring
         engine, recorder = monitoring._engine, monitoring._recorder
-        if engine is None or recorder is None or recorder.active_owner() != _uid():
-            return svc.DRIVER_INITIATED
-        a = engine.snapshot().assessment
-        return svc.AI_TRIGGERED if a and a.get("assessment") == "POTENTIALLY_NOT_SOBER" else svc.DRIVER_INITIATED
+        if engine is not None and recorder is not None and recorder.active_owner() == user_id:
+            a = engine.snapshot().assessment
+            if a and a.get("assessment") == "POTENTIALLY_NOT_SOBER":
+                return svc.AI_TRIGGERED
     except Exception:
-        return svc.DRIVER_INITIATED
+        pass
+    try:
+        from . import mobile_monitoring
+        if mobile_monitoring.fresh_assessment(user_id) == "POTENTIALLY_NOT_SOBER":
+            return svc.AI_TRIGGERED
+    except Exception:
+        pass
+    return svc.DRIVER_INITIATED
 
 
 # ---------------------------------------------------------------- driver

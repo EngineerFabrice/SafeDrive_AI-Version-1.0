@@ -138,36 +138,46 @@ def video():
 @monitoring.route("/start", methods=["POST"])
 @roles_required(*MONITORING_ROLES)
 def start():
-    engine = get_engine()
-    with _control_lock:
-        if engine.is_running:
-            owner = get_recorder().active_owner()
-            if owner is not None and owner != _user_id():
-                return jsonify({"running": True,
-                                "error": "Monitoring is already running for another user."}), 409
-            return jsonify({"running": True})
-        engine.start()
-        get_recorder().start_session(started_by=_user_id())   # in-memory; written by its own thread
-    audit.record(audit.MONITORING_STARTED, actor_id=_user_id(), target_type="monitoring_session")
-    return jsonify({"running": True})
+    body, code = start_for(_user_id())
+    return jsonify(body), code
 
 
 @monitoring.route("/stop", methods=["POST"])
 @roles_required(*MONITORING_ROLES)
 def stop():
+    body, code = stop_for(_user_id(), current_user.role == ROLE_ADMIN)
+    return jsonify(body), code
+
+
+def start_for(user_id):
+    """Start the server-camera engine for ``user_id``; returns (JSON body, HTTP status). Shared with the mobile API."""
+    engine = get_engine()
+    with _control_lock:
+        if engine.is_running:
+            owner = get_recorder().active_owner()
+            if owner is not None and owner != user_id:
+                return {"running": True, "error": "Monitoring is already running for another user."}, 409
+            return {"running": True}, 200
+        engine.start()
+        get_recorder().start_session(started_by=user_id)   # in-memory; written by its own thread
+    audit.record(audit.MONITORING_STARTED, actor_id=user_id, target_type="monitoring_session")
+    return {"running": True}, 200
+
+
+def stop_for(user_id, is_admin=False):
     """Only the user who started the session (or an administrator) may stop it."""
     engine = get_engine()
     with _control_lock:
         owner = get_recorder().active_owner()
-        if engine.is_running and owner is not None and owner != _user_id()                 and current_user.role != ROLE_ADMIN:
-            return jsonify({"running": True, "error": "Only the driver who started monitoring can stop it."}), 403
+        if engine.is_running and owner is not None and owner != user_id and not is_admin:
+            return {"running": True, "error": "Only the driver who started monitoring can stop it."}, 403
         was_running = engine.is_running
         if was_running:
             get_recorder().end_session("COMPLETED")   # before stop(), so the session is not seen as interrupted
         engine.stop()
     if was_running:
-        audit.record(audit.MONITORING_STOPPED, actor_id=_user_id(), target_type="monitoring_session")
-    return jsonify({"running": False})
+        audit.record(audit.MONITORING_STOPPED, actor_id=user_id, target_type="monitoring_session")
+    return {"running": False}, 200
 
 
 def _user_id():

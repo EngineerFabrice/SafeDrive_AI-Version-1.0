@@ -30,12 +30,19 @@ def monitoring_status(user_id):
     try:
         from . import monitoring
         engine, recorder = monitoring._engine, monitoring._recorder
-        if engine is None or recorder is None or recorder.active_owner() != user_id or not engine.is_running:
-            return None
-        a = engine.snapshot().assessment
-        return a.get("assessment") if a else "NO_CLASSIFIER"
+        if engine is not None and recorder is not None and recorder.active_owner() == user_id and engine.is_running:
+            a = engine.snapshot().assessment
+            return a.get("assessment") if a else "NO_CLASSIFIER"
     except Exception:
         return None
+    try:
+        from . import mobile_monitoring          # phone-camera session from the mobile app
+        phone = mobile_monitoring.status(user_id)
+        if phone["active"]:
+            return phone["assessment"]["assessment"] if phone["assessment"] else "NO_CLASSIFIER"
+    except Exception:
+        pass
+    return None
 
 
 # ---------------------------------------------------------------- drivers

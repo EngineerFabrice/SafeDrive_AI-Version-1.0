@@ -9,7 +9,7 @@ import pytest
 
 from website.config import db_settings
 
-TABLES = ("driver_presence", "email_otps", "legal_acceptances", "notifications", "messages", "conversation_participants", "conversations", "pricing_settings", "assistance_offers", "assistance_requests", "user_locations", "audit_logs",
+TABLES = ("mobile_api_tokens", "driver_presence", "email_otps", "legal_acceptances", "notifications", "messages", "conversation_participants", "conversations", "pricing_settings", "assistance_offers", "assistance_requests", "user_locations", "audit_logs",
           "umusare_profiles", "driver_profiles", "cooperative_memberships", "cooperative_groups", "cooperatives", "monitoring_events", "monitoring_sessions",
           "users")
 
